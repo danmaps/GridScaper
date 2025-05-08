@@ -169,14 +169,16 @@ let customPoles = [];
 let useElevations = [];
 
 if (poleDistances.length && poleHeights.length) {
-  let polePositions = [0];
-  for (let d of poleDistances) {
-    polePositions.push(polePositions[polePositions.length - 1] + d);
-  }
-  while (poleHeights.length < polePositions.length) poleHeights.push(10);
+  while (poleHeights.length < poleDistances.length) poleHeights.push(10);
   useElevations = poleElevations;
-  while (useElevations.length < polePositions.length) useElevations.push(0);
-  customPoles = polePositions.map((z, i) => ({ x: 0, z, h: poleHeights[i], elev: useElevations[i] }));
+  while (useElevations.length < poleDistances.length) useElevations.push(0);
+  
+  customPoles = poleDistances.map((z, i) => ({
+    x: 0, 
+    z, 
+    h: poleHeights[i], 
+    elev: useElevations[i]
+  }));
 }
 
 // Define the base height calculation function
@@ -1312,10 +1314,11 @@ if (customPoles) {
     const scaledHeight = elevScaleFactor !== 1 ? pole.h * elevScaleFactor : pole.h;
     mesh.scale.y = scaledHeight / BASE_H;
     
-    const zPos = pole.x;
+    const zPos = pole.z;
+    const xPos = pole.x; // Use the x-coordinate from customPoles
     const base = pole.elev;
     
-    mesh.position.set(0, base + scaledHeight / 2, zPos + terrainOffsetZ);
+    mesh.position.set(xPos, base + scaledHeight / 2, zPos + terrainOffsetZ);
     mesh.userData.pole = true;
 
     // Add cross arm to the pole
@@ -1324,9 +1327,10 @@ if (customPoles) {
     mesh.add(crossArm);
 
     scene.add(mesh);
-    poles.push({ x: 0, z: zPos, h: scaledHeight, base, obj: mesh });
+    poles.push({ x: xPos, z: zPos, h: scaledHeight, base, obj: mesh });
   }
   rebuild();
+  updateCrossarmOrientations();
 }
 
 // Scene customization variables
