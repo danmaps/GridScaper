@@ -100,9 +100,9 @@
     &nbsp;&nbsp;|&nbsp;&nbsp;
     <label><input type="checkbox" id="showGridCheck" checked> Grid</label>
     &nbsp;&nbsp;|&nbsp;&nbsp;
-    <label>Setting: <select id="settingSelect"><option value="residential" selected>Residential</option><option value="commercial">Commercial</option><option value="urban">Urban</option><option value="rural">Rural</option></select></label>
+    <label>Setting: <select id="settingSelect"><option value="none" selected>None</option><option value="residential">Residential</option><option value="commercial">Commercial</option><option value="urban">Urban</option><option value="rural">Rural</option></select></label>
     &nbsp;&nbsp;|&nbsp;&nbsp;
-    <label>Environment: <select id="environmentSelect"><option value="coastal" selected>Coastal</option><option value="mountain">Mountain</option><option value="desert">Desert</option><option value="city">City</option></select></label>
+    <label>Environment: <select id="environmentSelect"><option value="none" selected>None</option><option value="coastal">Coastal</option><option value="mountain">Mountain</option><option value="desert">Desert</option><option value="city">City</option></select></label>
     &nbsp;&nbsp;|&nbsp;&nbsp;
     <label>Equipment: <select id="equipmentSelect"><option value="distribution" selected>Distribution</option><option value="subTransmission">Sub Transmission</option><option value="bulkTransmission">Bulk Transmission</option><option value="generation">Generation</option></select></label>
     &nbsp;&nbsp;|&nbsp;&nbsp;
@@ -549,15 +549,31 @@ function addMountainElements() {
   
   // Mountain path/road
   const roadWidth = 3;
-  const roadGeometry = new THREE.PlaneGeometry(roadWidth, terrainDepth * 0.9);
+  const roadLength = terrainDepth * 0.9;
+  const roadXPosition = terrainWidth * 0.3;
+  
+  // Create a more detailed geometry to follow terrain
+  const roadGeometry = new THREE.PlaneGeometry(roadWidth, roadLength, 1, Math.floor(roadLength/2));
   const roadMaterial = new THREE.MeshStandardMaterial({ 
     color: 0x8B4513,
-    roughness: 1
+    roughness: 1,
+    side: THREE.DoubleSide
   });
+  
+  // Position all vertices to follow terrain
+  const positions = roadGeometry.attributes.position;
+  for (let i = 0; i < positions.count; i++) {
+    const x = roadXPosition;
+    const z = positions.getZ(i) + terrainPos;
+    positions.setY(i, hAt(x, z) + 0.05);
+  }
   
   const road = new THREE.Mesh(roadGeometry, roadMaterial);
   road.rotation.x = -Math.PI / 2;
-  road.position.set(terrainWidth * 0.3, 0.05, terrainPos);
+  road.position.set(roadXPosition, 0, terrainPos);
+  roadGeometry.attributes.position.needsUpdate = true;
+  roadGeometry.computeVertexNormals();
+  
   road.userData.environmentElement = true;
   scene.add(road);
 }
@@ -644,15 +660,31 @@ function addDesertElements() {
   
   // Desert road
   const roadWidth = 5;
-  const roadGeometry = new THREE.PlaneGeometry(roadWidth, terrainDepth);
+  const roadLength = terrainDepth;
+  const roadXPosition = -terrainWidth * 0.3;
+  
+  // Create a more detailed geometry to follow terrain
+  const roadGeometry = new THREE.PlaneGeometry(roadWidth, roadLength, 1, Math.floor(roadLength/2));
   const roadMaterial = new THREE.MeshStandardMaterial({ 
     color: 0xC2B280, 
-    roughness: 0.9
+    roughness: 0.9,
+    side: THREE.DoubleSide
   });
+  
+  // Position all vertices to follow terrain
+  const positions = roadGeometry.attributes.position;
+  for (let i = 0; i < positions.count; i++) {
+    const x = roadXPosition;
+    const z = positions.getZ(i) + terrainPos;
+    positions.setY(i, hAt(x, z) + 0.05);
+  }
   
   const road = new THREE.Mesh(roadGeometry, roadMaterial);
   road.rotation.x = -Math.PI / 2;
-  road.position.set(-terrainWidth * 0.3, 0.05, terrainPos);
+  road.position.set(roadXPosition, 0, terrainPos);
+  roadGeometry.attributes.position.needsUpdate = true;
+  roadGeometry.computeVertexNormals();
+  
   road.userData.environmentElement = true;
   scene.add(road);
 }
@@ -666,12 +698,29 @@ function addCityElements() {
   
   // Main road
   const mainRoadWidth = 8;
-  const mainRoadGeometry = new THREE.PlaneGeometry(mainRoadWidth, terrainDepth);
-  const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+  const mainRoadLength = terrainDepth;
+  
+  // Create a more detailed geometry to follow terrain
+  const mainRoadGeometry = new THREE.PlaneGeometry(mainRoadWidth, mainRoadLength, 1, Math.floor(mainRoadLength/2));
+  const roadMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x333333,
+    side: THREE.DoubleSide
+  });
+  
+  // Position main road vertices to follow terrain
+  const mainPositions = mainRoadGeometry.attributes.position;
+  for (let i = 0; i < mainPositions.count; i++) {
+    const x = 0;
+    const z = mainPositions.getZ(i) + terrainPos;
+    mainPositions.setY(i, hAt(x, z) + 0.05);
+  }
   
   const mainRoad = new THREE.Mesh(mainRoadGeometry, roadMaterial);
   mainRoad.rotation.x = -Math.PI / 2;
-  mainRoad.position.set(0, 0.05, terrainPos);
+  mainRoad.position.set(0, 0, terrainPos);
+  mainRoadGeometry.attributes.position.needsUpdate = true;
+  mainRoadGeometry.computeVertexNormals();
+  
   mainRoad.userData.environmentElement = true;
   scene.add(mainRoad);
   
@@ -680,66 +729,58 @@ function addCityElements() {
   const crossRoadWidth = 6;
   
   for (let i = 0; i < crossRoadCount; i++) {
-    const crossRoadGeometry = new THREE.PlaneGeometry(terrainWidth, crossRoadWidth);
-    const crossRoad = new THREE.Mesh(crossRoadGeometry, roadMaterial);
-    crossRoad.rotation.x = -Math.PI / 2;
-    
     const offset = (i - 1) * terrainDepth / 3;
-    crossRoad.position.set(0, 0.06, terrainPos + offset);
-    crossRoad.userData.environmentElement = true;
-    scene.add(crossRoad);
-  }
-  
-  // Urban trees (round tops)
-  const trunkGeo = new THREE.CylinderGeometry(0.2, 0.3, 2, 8);
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
-  const canopyGeo = new THREE.SphereGeometry(1.2, 12, 12);
-  const canopyMat = new THREE.MeshStandardMaterial({ color: 0x228B22 });
-  
-  for (let i = 0; i < 12; i++) {
-    const tree = new THREE.Group();
+    const zPos = terrainPos + offset;
     
-    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-    trunk.position.y = 1;
-    tree.add(trunk);
+    // Create cross road with sufficient segments to follow terrain
+    const crossRoadGeometry = new THREE.PlaneGeometry(terrainWidth, crossRoadWidth, Math.floor(terrainWidth/2), 1);
+    const crossRoad = new THREE.Mesh(crossRoadGeometry, roadMaterial);
     
-    const canopy = new THREE.Mesh(canopyGeo, canopyMat);
-    canopy.position.y = 2.5;
-    tree.add(canopy);
-    
-    // Position along streets
-    const roadSide = Math.random() > 0.5;
-    const crossStreet = Math.floor(Math.random() * 3);
-    
-    let xPos, zPos;
-    
-    if (Math.random() > 0.5) {
-      // Along main road
-      xPos = mainRoadWidth/2 + 2;
-      if (roadSide) xPos = -xPos;
-      zPos = (Math.random() - 0.5) * (terrainDepth - 10) + terrainPos;
-    } else {
-      // Along cross streets
-      xPos = (Math.random() - 0.5) * (terrainWidth - 10);
-      const offset = (crossStreet - 1) * terrainDepth / 3;
-      zPos = offset + terrainPos + (roadSide ? 5 : -5);
+    // Position cross road vertices to follow terrain
+    const crossPositions = crossRoadGeometry.attributes.position;
+    for (let j = 0; j < crossPositions.count; j++) {
+      const x = crossPositions.getX(j);
+      const z = zPos;
+      crossPositions.setY(j, hAt(x, z) + 0.06);
     }
     
-    const yPos = hAt(xPos, zPos);
-    tree.position.set(xPos, yPos, zPos);
-    tree.userData.environmentElement = true;
-    scene.add(tree);
+    crossRoad.rotation.x = -Math.PI / 2;
+    crossRoad.position.set(0, 0, zPos);
+    crossRoadGeometry.attributes.position.needsUpdate = true;
+    crossRoadGeometry.computeVertexNormals();
+    
+    crossRoad.userData.environmentElement = true;
+    scene.add(crossRoad);
   }
 }
 
 function addRoad(terrainPos, terrainWidth, terrainDepth) {
   const roadWidth = 5;
-  const roadGeometry = new THREE.PlaneGeometry(roadWidth, terrainDepth * 0.8);
-  const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x444444 });
+  const roadLength = terrainDepth * 0.8;
+  const roadXPosition = terrainWidth * 0.25;
+  
+  // Create a more detailed geometry to follow terrain
+  const roadGeometry = new THREE.PlaneGeometry(roadWidth, roadLength, 1, Math.floor(roadLength/2));
+  const roadMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x444444,
+    side: THREE.DoubleSide
+  });
+  
+  // Position all vertices to follow terrain
+  const positions = roadGeometry.attributes.position;
+  for (let i = 0; i < positions.count; i++) {
+    const x = roadXPosition;
+    const z = positions.getZ(i) + terrainPos;
+    // Get the terrain height at this position and add small offset
+    positions.setY(i, hAt(x, z) + 0.05);
+  }
   
   const road = new THREE.Mesh(roadGeometry, roadMaterial);
   road.rotation.x = -Math.PI / 2;
-  road.position.set(terrainWidth * 0.25, 0.05, terrainPos);
+  road.position.set(roadXPosition, 0, terrainPos);
+  roadGeometry.attributes.position.needsUpdate = true;
+  roadGeometry.computeVertexNormals();
+  
   road.userData.environmentElement = true;
   scene.add(road);
 }
@@ -1350,6 +1391,9 @@ function updateSceneElements() {
   
   // Add buildings based on setting type
   addRandomBuildings();
+  
+  // Add roads based on setting
+  addRoads();
 }
 
 function updatePoleAppearance() {
@@ -1396,90 +1440,89 @@ function addRandomBuildings() {
   // Clear existing buildings
   sceneElements.buildings.forEach(b => scene.remove(b));
   sceneElements.buildings = [];
-  
+
   if (!terrain) return;
-  
-  // Get terrain dimensions
+
   const terrainWidth = terrain.geometry.parameters.width;
   const terrainDepth = terrain.geometry.parameters.height;
   const terrainPos = terrain.position.z;
-  
-  // Building density and size range based on setting
-  let buildingCount = 0;
-  let minSize = 1;
-  let maxSize = 3;
-  let maxHeight = 2;
-  
-  switch(settingSel.value) {
-    case 'residential':
-      buildingCount = 8; // Sparse houses
-      minSize = 2;
-      maxSize = 4;
-      maxHeight = 2.5;
-      break;
-    case 'commercial': 
-      buildingCount = 5; // Fewer but larger buildings
-      minSize = 4;
-      maxSize = 8;
-      maxHeight = 6;
-      break;
-    case 'urban':
-      buildingCount = 12; // Many buildings
-      minSize = 3;
-      maxSize = 8;
-      maxHeight = 15;
-      break;
-    case 'rural':
-      buildingCount = 3; // Very few structures
-      minSize = 2;
-      maxSize = 5;
-      maxHeight = 3;
-      break;
+
+  if (settingSel.value === 'residential') {
+    const buildingSize = 3;
+    const buildingHeight = 5;
+    const rowSpacing = 10;
+    const colSpacing = 10;
+    const maxBuildings = 20;
+
+    const buildingMaterial = new THREE.MeshStandardMaterial({ color: 0x8b0000 });
+
+    let buildingCount = 0;
+    for (let row = 0; row < terrainDepth / rowSpacing && buildingCount < maxBuildings; row++) {
+      for (let col = 0; col < terrainWidth / colSpacing && buildingCount < maxBuildings; col++) {
+        const x = -terrainWidth / 2 + col * colSpacing + buildingSize / 2;
+        const z = -terrainDepth / 2 + row * rowSpacing + buildingSize / 2 + terrainPos;
+        const y = hAt(x, z) + buildingHeight / 2;
+
+        const buildingGeometry = new THREE.BoxGeometry(buildingSize, buildingHeight, buildingSize);
+        const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
+        building.position.set(x, y, z);
+        building.userData.environmentElement = true;
+
+        scene.add(building);
+        sceneElements.buildings.push(building);
+        buildingCount++;
+      }
+    }
+
+    addRoads();
   }
-  
-  // Building color based on environment
-  let buildingColor;
-  switch(environmentSel.value) {
-    case 'coastal':
-      buildingColor = 0xf5f5dc; // Beige/tan beach buildings
-      break;
-    case 'mountain':
-      buildingColor = 0x8b4513; // Brown wood cabins
-      break;
-    case 'desert':
-      buildingColor = 0xd2b48c; // Tan/adobe buildings
-      break;
-    case 'city':
-      buildingColor = 0xa9a9a9; // Gray city buildings
-      break;
+}
+
+function addRoads() {
+  if (!terrain) return;
+
+  const terrainWidth = terrain.geometry.parameters.width;
+  const terrainDepth = terrain.geometry.parameters.height;
+  const terrainPos = terrain.position.z;
+
+  const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+
+  // Main roads
+  for (let row = 0; row <= Math.ceil(20 / Math.floor(terrainWidth / 10)); row++) {
+    const roadGeometry = new THREE.PlaneGeometry(terrainWidth, 2, 1, Math.floor(terrainWidth / 2));
+    const road = new THREE.Mesh(roadGeometry, roadMaterial);
+
+    const positions = road.geometry.attributes.position;
+    for (let i = 0; i < positions.count; i++) {
+      const x = positions.getX(i);
+      const z = positions.getZ(i) - terrainDepth / 2 + row * 10 + terrainPos;
+      positions.setY(i, hAt(x, z));
+    }
+
+    road.rotation.x = -Math.PI / 2;
+    road.geometry.attributes.position.needsUpdate = true;
+    road.geometry.computeVertexNormals();
+    road.userData.isRoad = true;
+    scene.add(road);
   }
-  
-  const buildingMaterial = new THREE.MeshStandardMaterial({ color: buildingColor });
-  
-  // Add random buildings
-  for (let i = 0; i < buildingCount; i++) {
-    // Random position within terrain bounds, but avoid the center path where poles are
-    const xPos = (Math.random() - 0.5) * (terrainWidth - 4);
-    // If abs(xPos) < 5, then we're too close to the center line, so push out
-    const xOffset = Math.abs(xPos) < 5 ? (xPos < 0 ? -5 : 5) : 0;
-    const finalX = xPos + xOffset;
-    
-    const zPos = (Math.random() - 0.5) * (terrainDepth - 4) + terrainPos;
-    const width = minSize + Math.random() * (maxSize - minSize);
-    const depth = minSize + Math.random() * (maxSize - minSize);
-    const height = 1 + Math.random() * (maxHeight - 1);
-    
-    const yPos = hAt(finalX, zPos) + height / 2;
-    
-    const buildingGeo = new THREE.BoxGeometry(width, height, depth);
-    const building = new THREE.Mesh(buildingGeo, buildingMaterial);
-    building.position.set(finalX, yPos, zPos);
-    
-    // Slightly rotate buildings for more natural look
-    building.rotation.y = Math.random() * Math.PI * 0.25;
-    
-    scene.add(building);
-    sceneElements.buildings.push(building);
+
+  // Cross roads
+  for (let col = 0; col <= Math.floor(terrainWidth / 10); col++) {
+    const roadGeometry = new THREE.PlaneGeometry(2, terrainDepth, 1, Math.floor(terrainDepth / 2));
+    const road = new THREE.Mesh(roadGeometry, roadMaterial);
+
+    const positions = road.geometry.attributes.position;
+    for (let i = 0; i < positions.count; i++) {
+      const x = positions.getX(i) - terrainWidth / 2 + col * 10;
+      const z = positions.getZ(i) + terrainPos;
+      positions.setY(i, hAt(x, z));
+    }
+
+    road.rotation.x = -Math.PI / 2;
+    road.geometry.attributes.position.needsUpdate = true;
+    road.geometry.computeVertexNormals();
+    road.userData.isRoad = true;
+    scene.add(road);
   }
 }
 
