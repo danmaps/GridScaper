@@ -28,7 +28,7 @@ GridScaper.html?parameter1=value1&parameter2=value2
 Create a 200×150 unit grid:
 
 ```
-GridScaper.html?size-x=200&size-y=150
+?size-x=200&size-y=150
 ```
 
 ### Example 2: Basic Line Profile with Three Poles
@@ -36,23 +36,23 @@ GridScaper.html?size-x=200&size-y=150
 Create a line with poles at z=0, z=20 and z=40, with varying heights and elevations:
 
 ```
-GridScaper.html?poles-distances=0,20,40&poles-heights=10,15,12&poles-elevations=0,5,2
+?poles-distances=0,20,40&poles-heights=10,15,12&poles-elevations=0,5,2
 ```
 
-### Example 3: Valley Crossing
+### Example 3: Deep Valley Crossing
 
-Create a simulation of a power line crossing a valley:
-
-```
-GridScaper.html?poles-distances=0,25,50&poles-heights=20,25,20&poles-elevations=10,0,10
-```
-
-### Example 4: Hill Crossing
-
-Create a simulation of a power line crossing a hill:
+Simulate a power line crossing a deep valley:
 
 ```
-GridScaper.html?poles-distances=0,25,50&poles-heights=25,15,25&poles-elevations=0,10,0
+?poles-distances=0,50,100&poles-heights=30,50,30&poles-elevations=20,-30,20
+```
+
+### Example 4: Steep Hill Crossing
+
+Simulate a power line crossing a steep hill:
+
+```
+?poles-distances=0,40,80&poles-heights=40,20,40&poles-elevations=0,50,0
 ```
 
 ### Example 5: Combined Parameters
@@ -60,7 +60,7 @@ GridScaper.html?poles-distances=0,25,50&poles-heights=25,15,25&poles-elevations=
 Customize both grid size and pole placement:
 
 ```
-GridScaper.html?size-x=100&size-y=100&poles-distances=0,30,60,90&poles-heights=15,20,20,15&poles-elevations=0,5,5,0
+?size-x=100&size-y=100&poles-distances=0,30,60,90&poles-heights=15,20,20,15&poles-elevations=0,5,5,0
 ```
 
 ## Important Notes

@@ -795,10 +795,17 @@ function buildTerrain() {
   clearSceneElements();
   trees.clear();
   treeData.length = 0;
+  const gridSizeX = customPoles.length > 0
+    ? parseInt(urlParams.get('size-x')) || 20
+    : parseInt(urlParams.get('size-x')) || 100;
+  const gridSizeY = parseInt(urlParams.get('size-y')) || 100;
 
-  const maxPoleDistance = customPoles.length > 0 ? Math.max(...customPoles.map(p => p.z)) : 0;
-  const terrainWidth = 20; // Fixed width for the strip
-  const terrainDepth = maxPoleDistance + 40; // Extend depth based on poles
+  const maxPoleDistance = customPoles.length > 0
+    ? Math.max(...customPoles.map(p => p.z))
+    : 0;
+
+  const terrainWidth = gridSizeX; // Use grid size from parameters
+  const terrainDepth = Math.max(gridSizeY, maxPoleDistance + 40); // Ensure depth accommodates poles
   terrainOffsetZ = 0;
 
   const g = new THREE.PlaneGeometry(terrainWidth, terrainDepth, SEG, SEG);
