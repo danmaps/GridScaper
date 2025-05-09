@@ -785,7 +785,7 @@ function addRoad(terrainPos, terrainWidth, terrainDepth) {
   scene.add(road);
 }
 
-// Optimize terrain-building logic by reducing unnecessary computations
+// Adjust terrain alignment and raycasting logic
 function buildTerrain() {
   if (terrain) {
     scene.remove(terrain);
@@ -796,8 +796,9 @@ function buildTerrain() {
   trees.clear();
   treeData.length = 0;
 
-  const terrainWidth = 100; // Default ground size
-  const terrainDepth = 100; // Default ground size
+  const maxPoleDistance = customPoles.length > 0 ? Math.max(...customPoles.map(p => p.z)) : 0;
+  const terrainWidth = 20; // Fixed width for the strip
+  const terrainDepth = maxPoleDistance + 40; // Extend depth based on poles
   terrainOffsetZ = 0;
 
   const g = new THREE.PlaneGeometry(terrainWidth, terrainDepth, SEG, SEG);
@@ -827,6 +828,27 @@ function buildTerrain() {
 
   if (terrainSel.value === 'hillsTrees') addDefaultTrees();
   if (environmentSel) updateEnvironment();
+
+  // Log terrain dimensions when the scene is created
+  console.log(`Terrain Width: ${terrainWidth}, Terrain Depth: ${terrainDepth}`);
+}
+
+function fitGroundInView() {
+  if (terrain) {
+    const terrainWidth = terrain.geometry.parameters.width;
+    const terrainDepth = terrain.geometry.parameters.height;
+
+    const centerX = 0;
+    const centerZ = terrain.position.z;
+
+    const maxDimension = Math.max(terrainWidth, terrainDepth);
+    const distance = maxDimension / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+
+    camera.position.set(centerX + distance * 0.5, distance, centerZ + distance * 0.5);
+    camera.lookAt(centerX, 0, centerZ);
+    controls.target.set(centerX, 0, centerZ);
+    controls.update();
+  }
 }
 
 function addDefaultTrees(){
@@ -848,6 +870,7 @@ function addDefaultTrees(){
       } }} }
 }
 buildTerrain();
+fitGroundInView();
 
 /* ------- materials ------- */
 const BASE_H=10, R=0.2;
@@ -1338,27 +1361,17 @@ function collectData() {
 // Place custom poles on load
 if (customPoles) {
   poles.length = 0;
-  
-  // Extract any scaling factor that was applied to the elevations
-  let elevScaleFactor = 1;
-  const elevRange = Math.max(...useElevations) - Math.min(...useElevations);
-  if (elevRange > 30) {
-    const targetElevRange = 20;
-    elevScaleFactor = targetElevRange / elevRange;
-    console.log(`Using elevation scale factor for pole heights: ${elevScaleFactor.toFixed(2)}`);
-  }
-  
+
   for (const pole of customPoles) {
     const mesh = new THREE.Mesh(poleGeo, mPole);
-    
-    // Scale pole height proportionally if elevations were scaled
-    const scaledHeight = elevScaleFactor !== 1 ? pole.h * elevScaleFactor : pole.h;
+
+    const scaledHeight = pole.h;
     mesh.scale.y = scaledHeight / BASE_H;
-    
+
     const zPos = pole.z;
-    const xPos = pole.x; // Use the x-coordinate from customPoles
+    const xPos = 0; // Center poles in the strip
     const base = pole.elev;
-    
+
     mesh.position.set(xPos, base + scaledHeight / 2, zPos + terrainOffsetZ);
     mesh.userData.pole = true;
 
