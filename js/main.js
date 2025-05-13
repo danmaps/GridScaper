@@ -43,18 +43,44 @@ document.addEventListener('DOMContentLoaded', () => {
   const mTreeHL = materials.treeHighlight;
   const mGrid = materials.grid;
   const mBird = materials.bird;
+    // Last pole indicator material (semitransparent with glow effect)
+  const mLastPoleIndicator = new THREE.LineBasicMaterial({ 
+    color: 0x3498db, 
+    transparent: true, 
+    opacity: 0.7,
+    linewidth: 2
+  });
 
-  /* ------- data stores ------- */  const poles = []; // {x,z,h,base,obj}
+  /* ------- data stores ------- */  
+  const poles = []; // {x,z,h,base,obj}
   const trees = new THREE.Group();
   scene.add(trees);
   const treeData = []; // {x,z,yTop,ref}
   // terrainOffsetZ is imported from terrain.js
   const ray = new THREE.Raycaster();
-  const mouse = new THREE.Vector2();  const birds = [];
+  const mouse = new THREE.Vector2();  
+  
+  const birds = [];
   let hoverPt = null, hoverPole = null, hoverTree = null;
   let ghost = new THREE.Mesh(poleGeo, mGhost);
   ghost.visible = false;
   scene.add(ghost);
+    // Create terrain-conforming lines for the last pole indicator (double circle for better visibility)
+  let lastPoleIndicator = new THREE.Line(new THREE.BufferGeometry(), mLastPoleIndicator);
+  lastPoleIndicator.visible = false;
+  scene.add(lastPoleIndicator);
+  
+  // Create a second, inner indicator circle
+  const mLastPoleInnerIndicator = new THREE.LineBasicMaterial({ 
+    color: 0x73c2fb, 
+    transparent: true, 
+    opacity: 0.9,
+    linewidth: 1
+  });
+  let lastPoleInnerIndicator = new THREE.Line(new THREE.BufferGeometry(), mLastPoleInnerIndicator);
+  lastPoleInnerIndicator.visible = false;
+  scene.add(lastPoleInnerIndicator);
+  
   let drag = null, startY = 0, startH = 0, clickStart = null;
   let dragStartPos = null, dragStartHeight = null, dragMode = null;
 
@@ -382,6 +408,25 @@ document.addEventListener('DOMContentLoaded', () => {
   treeData.length = 0;
   const terrain = importedBuildTerrain(scene, urlParams, customPoles, elements.terrainSelect, elements.environmentSelect, SEG, hAt, addGridLines, addDefaultTrees, updateEnvironment);
   fitGroundInView(camera, controls, terrain);
+  /* ------- terrain-conforming circle creation ------- */
+  function createTerrainConformingCircle(centerX, centerZ, radius, segments, scaleFactor = 1.0) {
+    const points = [];
+    const scaledRadius = radius * scaleFactor;
+    
+    // Create a circle of points that follow the terrain contour
+    for (let i = 0; i <= segments; i++) {
+      const angle = (i / segments) * Math.PI * 2;
+      const x = centerX + Math.cos(angle) * scaledRadius;
+      const z = centerZ + Math.sin(angle) * scaledRadius;
+      const y = hAt(x, z) + 0.05; // Slightly above terrain to avoid z-fighting
+      
+      points.push(new THREE.Vector3(x, y, z));
+    }
+    
+    // Create a geometry from these points (closes the loop)
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    return geometry;
+  }
 
   /* ------- span build & check ------- */
   function drawSpan(a, b) {
@@ -441,6 +486,8 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (oldSpans.length === 0) {
       initBirds();
     }
+
+    updateLastPoleIndicator();
   }
 
   function addPole(x, z, h) {
@@ -460,6 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
     poles.push({ x, z, h, base, obj: mesh });
     rebuild();
     updateCrossarmOrientations();
+    updateLastPoleIndicator(); // Update the last pole indicator
   }
 
   function removePole(obj){ 
@@ -469,6 +517,7 @@ document.addEventListener('DOMContentLoaded', () => {
       poles.splice(i, 1); 
       rebuild();
       updateCrossarmOrientations();
+      updateLastPoleIndicator(); // Update the last pole indicator
     }
   }
 
@@ -653,18 +702,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (drag) {
       drag = null;
       controls.enabled = true;
+      updateLastPoleIndicator(); // Update indicator after drag operation completes
       return;
     }
     if (!clickStart) return;
     const [dx, dy] = [Math.abs(e.clientX - clickStart[0]), Math.abs(e.clientY - clickStart[1])];
-    clickStart = null;    if (dx < 5 && dy < 5 && hoverPt) {
+    clickStart = null;    
+    if (dx < 5 && dy < 5 && hoverPt) {
       const h = UIState.currentHeight;
       const base = hAt(hoverPt.x, hoverPt.z + terrainOffsetZ);
       addPole(hoverPt.x, hoverPt.z, h);
       updateGhost();
     }
   });
-
   function resetScene() {
     poles.forEach(p => scene.remove(p.obj));
     poles.length = 0;
@@ -674,6 +724,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     updateGhost();
     birds.length = 0;
+    
+    // Hide all indicators when resetting
+    lastPoleIndicator.visible = false;
+    lastPoleInnerIndicator.visible = false;
   }
 
   window.addEventListener('resize', () => {
@@ -717,6 +771,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     rebuild();
     updateCrossarmOrientations();
+    updateLastPoleIndicator(); // Update the last pole indicator for custom poles
   }
 
   function createBird() {
@@ -951,6 +1006,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
     
+    // Update last pole indicator
+    if (lastPoleIndicator.visible) {
+      updateLastPoleIndicator();
+    }
+    
     // Update birds
     const delta = 0.016; // Approximate frame time
     birds.forEach(bird => bird.update(delta));
@@ -1114,5 +1174,46 @@ document.addEventListener('DOMContentLoaded', () => {
       road.userData.environmentElement = true;
       scene.add(road);
     }
+  }  function updateLastPoleIndicator() {
+    if (poles.length === 0) {
+      lastPoleIndicator.visible = false;
+      lastPoleInnerIndicator.visible = false;
+      return;
+    }
+    
+    // Get the last pole in the array
+    const lastPole = poles[poles.length - 1];
+    
+    // Calculate pulse factors for scale and opacity
+    const currentTime = Date.now() * 0.003;
+    const outerPulse = Math.sin(currentTime);
+    const innerPulse = Math.sin(currentTime + Math.PI); // Opposite phase
+    
+    // Scale factors (subtle 10% diameter change)
+    const outerScaleFactor = 1 + 0.1 * Math.abs(outerPulse);
+    const innerScaleFactor = 1 + 0.1 * Math.abs(innerPulse);
+    
+    // Create terrain-conforming geometry for the outer indicator with scale
+    const indicatorGeometry = createTerrainConformingCircle(
+      lastPole.x, 
+      lastPole.z + terrainOffsetZ, 
+      1.0, 
+      32,
+      outerScaleFactor
+    );
+    
+    // Update the geometry of the indicators
+    if (lastPoleIndicator.geometry) {
+      lastPoleIndicator.geometry.dispose();
+    }
+    lastPoleIndicator.geometry = indicatorGeometry;
+    
+
+    // Also pulse the opacity for enhanced visibility
+    const outerOpacity = 0.4 + 0.4 * Math.abs(outerPulse);
+    
+    lastPoleIndicator.material.opacity = outerOpacity;
+    
+    lastPoleIndicator.visible = true;
   }
 });
