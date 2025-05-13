@@ -1,5 +1,6 @@
 import { CONSTANTS, HELPERS, BIRD_SETTINGS, createMaterials, ENVIRONMENT_COLORS, EQUIPMENT_COLORS, createGeometries } from './config.js';
 import { buildTerrain as importedBuildTerrain, terrainOffsetZ, fitGroundInView } from './terrain.js';
+import { initUI, setupUI, UIState, getUIValues, elements } from './ui.js';
 
 // Make THREE available to our ES module by accessing it from window
 const THREE = window.THREE;
@@ -7,36 +8,11 @@ const THREE = window.THREE;
 document.addEventListener('DOMContentLoaded', () => {
   // Use imported constants
   const { CLEARANCE, SAMPLES, DRAG_SENS, MINH, MAXH, SIZE, SEG, BASE_H, R } = CONSTANTS;
-  const { SNAP } = HELPERS;
+  const { SNAP } = HELPERS;  // Initialize UI elements early (without event handlers)
+  initUI();
 
-  /* ------- UI refs ------- */
-  const slider = document.getElementById('heightSlider');
-  const hLabel = document.getElementById('heightLabel');
-  const terrainSel = document.getElementById('terrainSelect');
-  const tensionSlider = document.getElementById('tensionSlider');
-  const tensionLabel = document.getElementById('tensionLabel');
-  const settingSel = document.getElementById('settingSelect');
-  const environmentSel = document.getElementById('environmentSelect');
-  const equipmentSel = document.getElementById('equipmentSelect');
-  const clearBtn = document.getElementById('clearScene');
-  const showGridCheck = document.getElementById('showGridCheck');
-  let currentH = +slider.value;
-  let currentTension = +tensionSlider.value;  slider.oninput = ()=>{ currentH=+slider.value; hLabel.textContent=currentH; updateGhost(); };  terrainSel.onchange = ()=>{ 
-    clearSceneElements();
-    trees.clear();
-    treeData.length = 0;
-    importedBuildTerrain(scene, urlParams, customPoles, terrainSel, environmentSel, SEG, hAt, addGridLines, addDefaultTrees, updateEnvironment); 
-    resetScene(); 
-    updateSceneElements(); 
-  };
-  tensionSlider.oninput = ()=>{ currentTension=+tensionSlider.value; tensionLabel.textContent=currentTension.toFixed(1)+'×'; rebuild(); };
-
-  if (settingSel) settingSel.onchange = updateSceneElements;
-  if (environmentSel) environmentSel.onchange = ()=>{ updateSceneElements(); updateEnvironment(); };
-  if (equipmentSel) equipmentSel.onchange = updateSceneElements;
-  if (showGridCheck) showGridCheck.onchange = ()=>{ toggleGridVisibility(showGridCheck.checked); };
-
-  clearBtn.onclick = resetScene;
+  // We already have elements imported at the top of the file via the import statement
+  // Simply use the named export 'elements' from the ui.js module
 
   /* ------- three basics ------- */
   const canvas = document.getElementById('c');
@@ -123,10 +99,9 @@ document.addEventListener('DOMContentLoaded', () => {
       return 0;
     };
   }
-
   // Define the base height calculation function
   function calculateTerrainHeight(x, z) {
-    return terrainSel.value === 'flat' ? 0 : Math.sin(x*0.09)*5 + Math.cos(z*0.11)*3 + Math.sin((x+z)*0.04)*2;
+    return elements.terrainSelect.value === 'flat' ? 0 : Math.sin(x*0.09)*5 + Math.cos(z*0.11)*3 + Math.sin((x+z)*0.04)*2;
   }
 
   // Height at specific location function
@@ -294,28 +269,26 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.geometry) e.geometry.dispose();
     });
   }
-
   function updateEnvironment() {
     clearSceneElements();
     
-    if (environmentSel.value === 'coastal') {
+    if (elements.environmentSelect.value === 'coastal') {
       addCoastalElements();
-    } else if (environmentSel.value === 'mountain') {
+    } else if (elements.environmentSelect.value === 'mountain') {
       addMountainElements();
-    } else if (environmentSel.value === 'desert') {
+    } else if (elements.environmentSelect.value === 'desert') {
       addDesertElements();
-    } else if (environmentSel.value === 'city') {
+    } else if (elements.environmentSelect.value === 'city') {
       addCityElements();
     }
     
     updateTerrainColor();
-  }
-  function updateTerrainColor() {
+  }  function updateTerrainColor() {
     if (!window.terrain) return;
     
     let terrainColor = ENVIRONMENT_COLORS.default;
-      if (environmentSel.value in ENVIRONMENT_COLORS) {
-      terrainColor = ENVIRONMENT_COLORS[environmentSel.value];
+      if (elements.environmentSelect.value in ENVIRONMENT_COLORS) {
+      terrainColor = ENVIRONMENT_COLORS[elements.environmentSelect.value];
     }
     
     if (window.terrain) {
@@ -363,21 +336,59 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function addRoad(terrainPos, terrainWidth, terrainDepth) {
     // Implementation would go here
-  }
+  }  /* ------- UI initialization ------- */
+  // Set up UI with callbacks and dependencies
+  setupUI(
+    // Callbacks
+    {
+      updateGhost,
+      clearSceneElements,
+      resetScene,
+      updateSceneElements,
+      rebuild,
+      updateEnvironment,
+      toggleGridVisibility
+    },
+    // Dependencies
+    {
+      scene,
+      trees,
+      treeData,
+      urlParams,
+      customPoles, 
+      SEG,
+      hAt,
+      addGridLines,
+      addDefaultTrees,
+      importedBuildTerrain
+    }
+  );
+  
+  // Reference UI elements directly from the elements variable we retrieved above
+  const slider = elements.slider;
+  const hLabel = elements.heightLabel;
+  const terrainSel = elements.terrainSelect;
+  const tensionSlider = elements.tensionSlider;
+  const tensionLabel = elements.tensionLabel;
+  const settingSel = elements.settingSelect;
+  const environmentSel = elements.environmentSelect;
+  const equipmentSel = elements.equipmentSelect;
+  const clearBtn = elements.clearButton;
+  const showGridCheck = elements.showGridCheck;
+
   // Use the imported buildTerrain function from terrain.js
   clearSceneElements();
   trees.clear();
   treeData.length = 0;
-  const terrain = importedBuildTerrain(scene, urlParams, customPoles, terrainSel, environmentSel, SEG, hAt, addGridLines, addDefaultTrees, updateEnvironment);
+  const terrain = importedBuildTerrain(scene, urlParams, customPoles, elements.terrainSelect, elements.environmentSelect, SEG, hAt, addGridLines, addDefaultTrees, updateEnvironment);
   fitGroundInView(camera, controls, terrain);
 
   /* ------- span build & check ------- */
   function drawSpan(a, b) {
     const crossarmHeightA = a.base + a.h; 
     const crossarmHeightB = b.base + b.h;
-    
-    const d = Math.hypot(b.x - a.x, b.z - a.z);
-    const sag = Math.max(0.1, d * 0.05) / currentTension;
+      const d = Math.hypot(b.x - a.x, b.z - a.z);
+    const sag = Math.max(0.1, d * 0.05) / UIState.currentTension;
     
     const crossarmPositions = [-1.2, 0, 1.2];
     
@@ -517,12 +528,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function updateGhost() {
-    ghost.visible = false;
+  function updateGhost() {    ghost.visible = false;
     if (!hoverPt || hoverPole || hoverTree) return;
     if (poles.some(p => p.x === hoverPt.x && p.z === hoverPt.z)) return;
 
-    const h = currentH;
+    const h = UIState.currentHeight;
     const base = hAt(hoverPt.x, hoverPt.z + terrainOffsetZ);
 
     ghost.scale.y = h / BASE_H;
@@ -647,9 +657,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (!clickStart) return;
     const [dx, dy] = [Math.abs(e.clientX - clickStart[0]), Math.abs(e.clientY - clickStart[1])];
-    clickStart = null;
-    if (dx < 5 && dy < 5 && hoverPt) {
-      const h = currentH;
+    clickStart = null;    if (dx < 5 && dy < 5 && hoverPt) {
+      const h = UIState.currentHeight;
       const base = hAt(hoverPt.x, hoverPt.z + terrainOffsetZ);
       addPole(hoverPt.x, hoverPt.z, h);
       updateGhost();
@@ -1005,14 +1014,13 @@ document.addEventListener('DOMContentLoaded', () => {
     updatePoleAppearance();
     addRandomBuildings();
     addRoads();
-  }
-  function updatePoleAppearance() {
+  }  function updatePoleAppearance() {
     let poleColor = EQUIPMENT_COLORS.distribution.pole;
     let crossArmColor = EQUIPMENT_COLORS.distribution.crossArm;
     
-    if (equipmentSel.value in EQUIPMENT_COLORS) {
-      poleColor = EQUIPMENT_COLORS[equipmentSel.value].pole;
-      crossArmColor = EQUIPMENT_COLORS[equipmentSel.value].crossArm;
+    if (elements.equipmentSelect.value in EQUIPMENT_COLORS) {
+      poleColor = EQUIPMENT_COLORS[elements.equipmentSelect.value].pole;
+      crossArmColor = EQUIPMENT_COLORS[elements.equipmentSelect.value].crossArm;
     }
     
     poles.forEach(pole => {
@@ -1034,9 +1042,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const terrainWidth = window.terrain.geometry.parameters.width;
     const terrainDepth = window.terrain.geometry.parameters.height;
-    const terrainPos = window.terrain.position.z;
-
-    if (settingSel.value === 'residential') {
+    const terrainPos = window.terrain.position.z;    if (elements.settingSelect.value === 'residential') {
       const buildingSize = 3;
       const buildingHeight = 5;
       const rowSpacing = 10;

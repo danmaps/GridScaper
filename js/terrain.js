@@ -25,7 +25,6 @@ export function buildTerrain(scene, urlParams, customPoles, terrainSel, environm
   const terrainWidth = gridSizeX;
   const terrainDepth = Math.max(gridSizeY, maxPoleDistance + 40);
   terrainOffsetZ = 0;
-
   const g = new THREE.PlaneGeometry(terrainWidth, terrainDepth, SEG, SEG);
   g.rotateX(-Math.PI / 2);
   terrain = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ 
