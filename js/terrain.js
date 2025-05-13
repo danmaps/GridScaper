@@ -1,13 +1,16 @@
 // Terrain-related calculations and generation
 
-// Define in global scope instead of using export
-function buildTerrain(scene, urlParams, customPoles, terrainSel, environmentSel, SEG, hAt, addGridLines, addDefaultTrees, updateEnvironment) {
-  let terrain = null;
-  let terrainOffsetZ = 0;
+// Export the offset variable so main.js can access it
+export let terrainOffsetZ = 0;
 
-  if (terrain) {
-    scene.remove(terrain);
-    terrain.geometry.dispose();
+// Export the function for use in main.js
+export function buildTerrain(scene, urlParams, customPoles, terrainSel, environmentSel, SEG, hAt, addGridLines, addDefaultTrees, updateEnvironment) {  let terrain = null;
+
+  // Clear existing terrain if it exists
+  if (window.terrain) {
+    scene.remove(window.terrain);
+    window.terrain.geometry.dispose();
+    window.terrain = null;
   }
 
   const gridSizeX = customPoles.length > 0
@@ -25,13 +28,13 @@ function buildTerrain(scene, urlParams, customPoles, terrainSel, environmentSel,
 
   const g = new THREE.PlaneGeometry(terrainWidth, terrainDepth, SEG, SEG);
   g.rotateX(-Math.PI / 2);
-
   terrain = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ 
     color: environmentSel && environmentSel.value === 'desert' ? 0xd2b48c : 0x5ca55c, 
     side: THREE.DoubleSide 
   }));
   terrain.position.z = terrainDepth / 2 - 20;
   scene.add(terrain);
+  window.terrain = terrain; // Set the global terrain reference
 
   const positions = terrain.geometry.attributes.position;
   for (let i = 0; i < positions.count; i++) {
@@ -54,7 +57,7 @@ function buildTerrain(scene, urlParams, customPoles, terrainSel, environmentSel,
   return terrain;
 }
 
-function fitGroundInView(camera, controls, terrain) {
+export function fitGroundInView(camera, controls, terrain) {
   if (terrain) {
     const terrainWidth = terrain.geometry.parameters.width;
     const terrainDepth = terrain.geometry.parameters.height;
@@ -72,6 +75,3 @@ function fitGroundInView(camera, controls, terrain) {
   }
 }
 
-// Make functions available globally
-window.buildTerrain = buildTerrain;
-window.fitGroundInView = fitGroundInView;

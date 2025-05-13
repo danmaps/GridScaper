@@ -1,11 +1,13 @@
+import { CONSTANTS, HELPERS, BIRD_SETTINGS, createMaterials, ENVIRONMENT_COLORS, EQUIPMENT_COLORS, createGeometries } from './config.js';
+import { buildTerrain as importedBuildTerrain, terrainOffsetZ, fitGroundInView } from './terrain.js';
+
+// Make THREE available to our ES module by accessing it from window
+const THREE = window.THREE;
+
 document.addEventListener('DOMContentLoaded', () => {
-  /* ------- constants ------- */
-  const CLEARANCE = 1;          // ft span‑to‑span
-  const SAMPLES   = 32;         // points per span
-  const DRAG_SENS = 0.05;       // ft per pixel when dragging pole
-  const MINH = 1, MAXH = 40;
-  const SNAP = v=>Math.round(v);
-  const SIZE = 120, SEG = 120;
+  // Use imported constants
+  const { CLEARANCE, SAMPLES, DRAG_SENS, MINH, MAXH, SIZE, SEG, BASE_H, R } = CONSTANTS;
+  const { SNAP } = HELPERS;
 
   /* ------- UI refs ------- */
   const slider = document.getElementById('heightSlider');
@@ -19,9 +21,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const clearBtn = document.getElementById('clearScene');
   const showGridCheck = document.getElementById('showGridCheck');
   let currentH = +slider.value;
-  let currentTension = +tensionSlider.value;
-  slider.oninput = ()=>{ currentH=+slider.value; hLabel.textContent=currentH; updateGhost(); };
-  terrainSel.onchange = ()=>{ buildTerrain(); resetScene(); updateSceneElements(); };
+  let currentTension = +tensionSlider.value;  slider.oninput = ()=>{ currentH=+slider.value; hLabel.textContent=currentH; updateGhost(); };  terrainSel.onchange = ()=>{ 
+    clearSceneElements();
+    trees.clear();
+    treeData.length = 0;
+    importedBuildTerrain(scene, urlParams, customPoles, terrainSel, environmentSel, SEG, hAt, addGridLines, addDefaultTrees, updateEnvironment); 
+    resetScene(); 
+    updateSceneElements(); 
+  };
   tensionSlider.oninput = ()=>{ currentTension=+tensionSlider.value; tensionLabel.textContent=currentTension.toFixed(1)+'×'; rebuild(); };
 
   if (settingSel) settingSel.onchange = updateSceneElements;
@@ -45,37 +52,29 @@ document.addEventListener('DOMContentLoaded', () => {
   const sun = new THREE.DirectionalLight(0xffffff, 0.6);
   sun.position.set(10, 40, 20);
   scene.add(sun);
-
   /* ------- materials ------- */
-  const BASE_H = 10, R = 0.2;
-  const poleGeo = new THREE.CylinderGeometry(R, R, BASE_H, 8);
-  const crossArmGeo = new THREE.BoxGeometry(3, 0.2, 0.2);
-  const mPole = new THREE.MeshStandardMaterial({color: 0x8b5a2b});
-  const mCrossArm = new THREE.MeshStandardMaterial({color: 0x4d4d4d});
-  const mPoleHL = new THREE.MeshStandardMaterial({color: 0xffe66d});
-  const mGood = new THREE.LineBasicMaterial({color: 0x000000});
-  const mBad = new THREE.LineBasicMaterial({color: 0xff0000});
-  const mGhost = new THREE.MeshStandardMaterial({color: 0x46c9ff, transparent: true, opacity: 0.4});
-  const mTreeHL = new THREE.MeshStandardMaterial({color: 0xffff8d});
-  const mGrid = new THREE.LineBasicMaterial({color: 0x555555, transparent: true, opacity: 0.5});
-  const mBird = new THREE.MeshStandardMaterial({color: 0x222222});
+  // Get geometries from config
+  const { pole: poleGeo, crossArm: crossArmGeo } = createGeometries();
+  
+  // Get materials from config
+  const materials = createMaterials();
+  const mPole = materials.pole;
+  const mCrossArm = materials.crossArm;
+  const mPoleHL = materials.poleHighlight;
+  const mGood = materials.goodSpan;
+  const mBad = materials.badSpan;
+  const mGhost = materials.ghost;
+  const mTreeHL = materials.treeHighlight;
+  const mGrid = materials.grid;
+  const mBird = materials.bird;
 
-  /* ------- data stores ------- */
-  const poles = []; // {x,z,h,base,obj}
+  /* ------- data stores ------- */  const poles = []; // {x,z,h,base,obj}
   const trees = new THREE.Group();
   scene.add(trees);
   const treeData = []; // {x,z,yTop,ref}
-  let terrainOffsetZ = 0;
+  // terrainOffsetZ is imported from terrain.js
   const ray = new THREE.Raycaster();
-  const mouse = new THREE.Vector2();
-  const birds = [];
-  const birdSettings = {
-    count: 3,
-    perchHeight: 0.1,
-    flySpeed: 5.0,
-    wingSpeed: 0.2,
-    spawnChance: 0.25
-  };
+  const mouse = new THREE.Vector2();  const birds = [];
   let hoverPt = null, hoverPole = null, hoverTree = null;
   let ghost = new THREE.Mesh(poleGeo, mGhost);
   ghost.visible = false;
@@ -254,77 +253,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function buildTerrain() {
-    if (window.terrain) {
-      scene.remove(window.terrain);
-      window.terrain.geometry.dispose();
-    }
-
-    clearSceneElements();
-    trees.clear();
-    treeData.length = 0;
-    const gridSizeX = customPoles.length > 0
-      ? parseInt(urlParams.get('size-x')) || 20
-      : parseInt(urlParams.get('size-x')) || 100;
-    const gridSizeY = parseInt(urlParams.get('size-y')) || 100;
-
-    const maxPoleDistance = customPoles.length > 0
-      ? Math.max(...customPoles.map(p => p.z))
-      : 0;
-
-    const terrainWidth = gridSizeX; // Use grid size from parameters
-    const terrainDepth = Math.max(gridSizeY, maxPoleDistance + 40); // Ensure depth accommodates poles
-    terrainOffsetZ = 0;
-
-    const g = new THREE.PlaneGeometry(terrainWidth, terrainDepth, SEG, SEG);
-    g.rotateX(-Math.PI / 2);
-
-    const terrain = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ 
-      color: environmentSel && environmentSel.value === 'desert' ? 0xd2b48c : 0x5ca55c, 
-      side: THREE.DoubleSide 
-    }));
-    terrain.position.z = terrainDepth / 2 - 20;
-    scene.add(terrain);
-    window.terrain = terrain;
-
-    const positions = terrain.geometry.attributes.position;
-    for (let i = 0; i < positions.count; i++) {
-      const x = positions.getX(i);
-      const localZ = positions.getZ(i);
-      const worldZ = localZ + terrain.position.z;
-
-      const elevation = customGround ? customGround(x, worldZ) : calculateTerrainHeight(x, worldZ);
-      positions.setY(i, elevation);
-    }
-
-    positions.needsUpdate = true;
-    terrain.geometry.computeVertexNormals();
-
-    addGridLines(scene, terrain);
-
-    if (terrainSel.value === 'hillsTrees') addDefaultTrees(scene, hAt);
-    if (environmentSel) updateEnvironment(scene, environmentSel);
-
-    return terrain;
-  }
-
-  function fitGroundInView(camera, controls, terrain) {
-    if (terrain) {
-      const terrainWidth = terrain.geometry.parameters.width;
-      const terrainDepth = terrain.geometry.parameters.height;
-
-      const centerX = 0;
-      const centerZ = terrain.position.z;
-
-      const maxDimension = Math.max(terrainWidth, terrainDepth);
-      const distance = maxDimension / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
-
-      camera.position.set(centerX + distance * 0.5, distance, centerZ + distance * 0.5);
-      camera.lookAt(centerX, 0, centerZ);
-      controls.target.set(centerX, 0, centerZ);
-      controls.update();
-    }
-  }
+    // The buildTerrain function has been moved to terrain.js and is imported as importedBuildTerrain
+  // fitGroundInView is now imported from terrain.js
 
   function addDefaultTrees(scene, hAt) {
     const trunkG = new THREE.CylinderGeometry(0.15, 0.15, 1, 6);
@@ -380,28 +310,17 @@ document.addEventListener('DOMContentLoaded', () => {
     
     updateTerrainColor();
   }
-
   function updateTerrainColor() {
     if (!window.terrain) return;
     
-    let terrainColor = 0x5ca55c; // Default green
-    
-    switch(environmentSel.value) {
-      case 'desert':
-        terrainColor = 0xd2b48c; // Beige for desert
-        break;
-      case 'coastal':
-        terrainColor = 0xf0e68c; // Khaki for sandy shores
-        break;
-      case 'mountain':
-        terrainColor = 0x4f7942; // Dark green for mountain vegetation
-        break;
-      case 'city':
-        terrainColor = 0x7ccd7c; // Lighter green for manicured urban grass
-        break;
+    let terrainColor = ENVIRONMENT_COLORS.default;
+      if (environmentSel.value in ENVIRONMENT_COLORS) {
+      terrainColor = ENVIRONMENT_COLORS[environmentSel.value];
     }
     
-    window.terrain.material.color.setHex(terrainColor);
+    if (window.terrain) {
+      window.terrain.material.color.setHex(terrainColor);
+    }
   }
 
   function addCoastalElements() {
@@ -445,8 +364,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function addRoad(terrainPos, terrainWidth, terrainDepth) {
     // Implementation would go here
   }
-
-  const terrain = buildTerrain(scene, urlParams, customPoles, terrainSel, environmentSel, SEG, hAt, addGridLines, addDefaultTrees, updateEnvironment);
+  // Use the imported buildTerrain function from terrain.js
+  clearSceneElements();
+  trees.clear();
+  treeData.length = 0;
+  const terrain = importedBuildTerrain(scene, urlParams, customPoles, terrainSel, environmentSel, SEG, hAt, addGridLines, addDefaultTrees, updateEnvironment);
   fitGroundInView(camera, controls, terrain);
 
   /* ------- span build & check ------- */
@@ -649,12 +571,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     clickStart = [e.clientX, e.clientY];
   });
-
   window.addEventListener('pointermove', e => {
     if (drag) {
       mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
       ray.setFromCamera(mouse, camera);
-      const hit = ray.intersectObject(window.terrain, true)[0];
+      let hit = null;
+      
+      if (window.terrain) {
+        const intersections = ray.intersectObject(window.terrain, true);
+        hit = intersections && intersections.length > 0 ? intersections[0] : null;
+      }
       
       if (hit) {
         const pole = poles.find(p => p.obj === drag);
@@ -692,11 +618,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (hoverTree) setTreeHL(hoverTree, false);
       hoverTree = tPick;
       if (hoverTree) setTreeHL(hoverTree, true);
-    }
-
-    mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+    }    mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
     ray.setFromCamera(mouse, camera);
-    const hit = ray.intersectObject(window.terrain, true)[0];
+    let hit = null;
+    
+    if (window.terrain) {
+      const intersections = ray.intersectObject(window.terrain, true);
+      hit = intersections && intersections.length > 0 ? intersections[0] : null;
+    }
 
     if (hit) {
       hoverPt = {
@@ -842,10 +771,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!this.targetPosition) {
           this.findPerch();
           return;
-        }
-
-        // Move toward target
-        const moveSpeed = birdSettings.flySpeed * delta;
+        }        // Move toward target
+        const moveSpeed = BIRD_SETTINGS.flySpeed * delta;
         const direction = new THREE.Vector3().subVectors(this.targetPosition, this.obj.position).normalize();
         this.obj.position.add(direction.multiplyScalar(moveSpeed));
         this.lookDirection.lerp(direction, 0.1);
@@ -854,7 +781,7 @@ document.addEventListener('DOMContentLoaded', () => {
         this.obj.lookAt(this.obj.position.clone().add(this.lookDirection));
         
         // Flap wings
-        this.wingAngle += birdSettings.wingSpeed * this.wingDirection;
+        this.wingAngle += BIRD_SETTINGS.wingSpeed * this.wingDirection;
         if (Math.abs(this.wingAngle) >= 0.5) {
           this.wingDirection *= -1;
         }
@@ -901,18 +828,17 @@ document.addEventListener('DOMContentLoaded', () => {
         // Pick a random point along the span
         const positions = span.geometry.attributes.position;
         const pointIndex = Math.floor(Math.random() * (positions.count - 2) + 1);
-        
-        // Get the position on the span
+          // Get the position on the span
         const point = new THREE.Vector3(
           positions.getX(pointIndex),
-          positions.getY(pointIndex) + birdSettings.perchHeight,
+          positions.getY(pointIndex) + BIRD_SETTINGS.perchHeight,
           positions.getZ(pointIndex)
         );
         
         this.span = span;
         this.targetPosition = point;
         this.spanPoint = pointIndex;
-        this.spanOffset = birdSettings.perchHeight;
+        this.spanOffset = BIRD_SETTINGS.perchHeight;
         
         // If not already flying, start flying
         if (!this.flying) {
@@ -971,12 +897,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
     birds.length = 0;
-    
-    const spans = scene.children.filter(o => o.userData.span);
+      const spans = scene.children.filter(o => o.userData.span);
     if (spans.length === 0) return;
     
-    for (let i = 0; i < birdSettings.count; i++) {
-      if (Math.random() < birdSettings.spawnChance) {
+    for (let i = 0; i < BIRD_SETTINGS.count; i++) {
+      if (Math.random() < BIRD_SETTINGS.spawnChance) {
         const bird = createBird();
         birds.push(bird);
         
@@ -1081,27 +1006,13 @@ document.addEventListener('DOMContentLoaded', () => {
     addRandomBuildings();
     addRoads();
   }
-
   function updatePoleAppearance() {
-    let poleColor, crossArmColor;
+    let poleColor = EQUIPMENT_COLORS.distribution.pole;
+    let crossArmColor = EQUIPMENT_COLORS.distribution.crossArm;
     
-    switch(equipmentSel.value) {
-      case 'distribution':
-        poleColor = 0x8b5a2b;
-        crossArmColor = 0x4d4d4d;
-        break;
-      case 'subTransmission':
-        poleColor = 0x708090;
-        crossArmColor = 0x303030;
-        break;
-      case 'bulkTransmission':
-        poleColor = 0xa9a9a9;
-        crossArmColor = 0xa9a9a9;
-        break;
-      case 'generation':
-        poleColor = 0x708090;
-        crossArmColor = 0x1e90ff;
-        break;
+    if (equipmentSel.value in EQUIPMENT_COLORS) {
+      poleColor = EQUIPMENT_COLORS[equipmentSel.value].pole;
+      crossArmColor = EQUIPMENT_COLORS[equipmentSel.value].crossArm;
     }
     
     poles.forEach(pole => {
