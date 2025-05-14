@@ -255,7 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
     // The buildTerrain function has been moved to terrain.js and is imported as importedBuildTerrain
-  // fitGroundInView is now imported from terrain.js
+  // fitGroundInView is imported from terrain.js
 
   function addDefaultTrees(scene, hAt) {
     const trunkG = new THREE.CylinderGeometry(0.15, 0.15, 1, 6);
@@ -348,21 +348,7 @@ document.addEventListener('DOMContentLoaded', () => {
     scene.add(water);
   }
 
-  function addMountainElements() {
-    // Implementation would go here
-  }
-
-  function addDesertElements() {
-    // Implementation would go here
-  }
-
-  function addCityElements() {
-    // Implementation would go here
-  }
-
-  function addRoad(terrainPos, terrainWidth, terrainDepth) {
-    // Implementation would go here
-  }  /* ------- UI initialization ------- */
+  /* ------- UI initialization ------- */
   // Set up UI with callbacks and dependencies
   setupUI(
     // Callbacks
