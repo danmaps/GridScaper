@@ -359,7 +359,8 @@ document.addEventListener('DOMContentLoaded', () => {
       updateSceneElements,
       rebuild,
       updateEnvironment,
-      toggleGridVisibility
+      toggleGridVisibility,
+      createRandomScenario
     },
     // Dependencies
     {
@@ -714,6 +715,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // Hide all indicators when resetting
     lastPoleIndicator.visible = false;
     lastPoleInnerIndicator.visible = false;
+  }
+
+  function createRandomScenario() {
+    const terrainChoices = ['flat', 'hills', 'hillsTrees'];
+    const choice = terrainChoices[Math.floor(Math.random() * terrainChoices.length)];
+    if (elements.terrainSelect) {
+      elements.terrainSelect.value = choice;
+      elements.terrainSelect.onchange();
+    } else {
+      resetScene();
+    }
+
+    let z = 0;
+    for (let i = 0; i < 5; i++) {
+      if (i > 0) z += THREE.MathUtils.randInt(15, 25);
+      const h = THREE.MathUtils.randInt(10, 30);
+      addPole(0, z, h);
+    }
   }
 
   window.addEventListener('resize', () => {
