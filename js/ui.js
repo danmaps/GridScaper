@@ -19,7 +19,8 @@ export const elements = {
   get environmentSelect() { return document.getElementById('environmentSelect'); },
   get equipmentSelect() { return document.getElementById('equipmentSelect'); },
   get clearButton() { return document.getElementById('clearScene'); },
-  get showGridCheck() { return document.getElementById('showGridCheck'); }
+  get showGridCheck() { return document.getElementById('showGridCheck'); },
+  get randomButton() { return document.getElementById('randomScenario'); }
 };
 
 /**
@@ -46,8 +47,8 @@ export function initUI() {
  * This should be called after all dependencies are available
  */
 export function setupUI(callbacks, dependencies) {
-  const { updateGhost, clearSceneElements, resetScene, updateSceneElements, 
-          rebuild, updateEnvironment, toggleGridVisibility } = callbacks;
+  const { updateGhost, clearSceneElements, resetScene, updateSceneElements,
+          rebuild, updateEnvironment, toggleGridVisibility, createRandomScenario } = callbacks;
           
   const { scene, trees, treeData, urlParams, customPoles, SEG, hAt, 
           addGridLines, addDefaultTrees, importedBuildTerrain } = dependencies;
@@ -115,6 +116,11 @@ export function setupUI(callbacks, dependencies) {
   
   // Clear button
   elements.clearButton.onclick = resetScene;
+
+  // Random scenario button
+  if (elements.randomButton) {
+    elements.randomButton.onclick = createRandomScenario;
+  }
 }
 
 /**
