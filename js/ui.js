@@ -1,14 +1,11 @@
-// UI Module for GridScaper
 import { CONSTANTS } from './config.js';
 
-// UI state management
 export const UIState = {
   currentHeight: 20,
-  currentTension: 1.0,
+  currentTension: 1,
   showGrid: true
 };
 
-// UI element references
 export const elements = {
   get slider() { return document.getElementById('heightSlider'); },
   get heightLabel() { return document.getElementById('heightLabel'); },
@@ -23,114 +20,122 @@ export const elements = {
   get randomButton() { return document.getElementById('randomScenario'); }
 };
 
-/**
- * Initialize UI state from element values
- * This can be called early in the initialization process
- */
 export function initUI() {
-  // Initialize state from UI elements if elements are available
   if (elements.slider) {
-    UIState.currentHeight = +elements.slider.value;
+    UIState.currentHeight = Number(elements.slider.value);
+    elements.heightLabel.textContent = UIState.currentHeight;
   }
+
   if (elements.tensionSlider) {
-    UIState.currentTension = +elements.tensionSlider.value;
+    UIState.currentTension = Number(elements.tensionSlider.value);
+    elements.tensionLabel.textContent = `${UIState.currentTension.toFixed(1)} A`;
   }
+
   if (elements.showGridCheck) {
-    UIState.showGrid = elements.showGridCheck.checked;
+    UIState.showGrid = Boolean(elements.showGridCheck.checked);
   }
-  
+
   return { elements };
 }
 
-/**
- * Set up event handlers for UI elements
- * This should be called after all dependencies are available
- */
 export function setupUI(callbacks, dependencies) {
-  const { updateGhost, clearSceneElements, resetScene, updateSceneElements,
-          rebuild, updateEnvironment, toggleGridVisibility, createRandomScenario } = callbacks;
-          
-  const { scene, trees, treeData, urlParams, customPoles, SEG, hAt, 
-          addGridLines, addDefaultTrees, importedBuildTerrain } = dependencies;
-  
-  // Height slider
-  elements.slider.oninput = () => {
-    UIState.currentHeight = +elements.slider.value;
-    elements.heightLabel.textContent = UIState.currentHeight;
-    updateGhost();
-  };
-  
-  // Terrain select
-  elements.terrainSelect.onchange = () => {
-    clearSceneElements();
-    trees.clear();
-    treeData.length = 0;
-    importedBuildTerrain(
-      scene, 
-      urlParams, 
-      customPoles, 
-      elements.terrainSelect, 
-      elements.environmentSelect, 
-      SEG, 
-      hAt, 
-      addGridLines, 
-      addDefaultTrees, 
-      updateEnvironment
-    );
-    resetScene();
-    updateSceneElements();
-  };
-  
-  // Tension slider
-  elements.tensionSlider.oninput = () => {
-    UIState.currentTension = +elements.tensionSlider.value;
-    elements.tensionLabel.textContent = UIState.currentTension.toFixed(1) + '×';
-    rebuild();
-  };
-  
-  // Setting select
+  const {
+    updateGhost,
+    clearSceneElements,
+    resetScene,
+    updateSceneElements,
+    rebuild,
+    updateEnvironment,
+    toggleGridVisibility,
+    createRandomScenario
+  } = callbacks;
+
+  const {
+    scene,
+    trees,
+    treeData,
+    urlParams,
+    customPoles,
+    SEG,
+    hAt,
+    addGridLines,
+    addDefaultTrees,
+    importedBuildTerrain
+  } = dependencies;
+
+  if (elements.slider) {
+    elements.slider.oninput = () => {
+      UIState.currentHeight = Number(elements.slider.value);
+      elements.heightLabel.textContent = UIState.currentHeight;
+      updateGhost();
+    };
+  }
+
+  if (elements.terrainSelect) {
+    elements.terrainSelect.onchange = () => {
+      clearSceneElements();
+      trees.clear();
+      treeData.length = 0;
+      importedBuildTerrain(
+        scene,
+        urlParams,
+        customPoles,
+        elements.terrainSelect,
+        elements.environmentSelect,
+        SEG,
+        hAt,
+        addGridLines,
+        addDefaultTrees,
+        updateEnvironment
+      );
+      resetScene();
+      updateSceneElements();
+    };
+  }
+
+  if (elements.tensionSlider) {
+    elements.tensionSlider.oninput = () => {
+      UIState.currentTension = Number(elements.tensionSlider.value);
+      elements.tensionLabel.textContent = `${UIState.currentTension.toFixed(1)} A`;
+      rebuild();
+    };
+  }
+
   if (elements.settingSelect) {
     elements.settingSelect.onchange = updateSceneElements;
   }
-  
-  // Environment select
+
   if (elements.environmentSelect) {
     elements.environmentSelect.onchange = () => {
-      updateSceneElements();
       updateEnvironment();
+      updateSceneElements();
     };
   }
-  
-  // Equipment select
+
   if (elements.equipmentSelect) {
     elements.equipmentSelect.onchange = updateSceneElements;
   }
-  
-  // Show grid checkbox
+
   if (elements.showGridCheck) {
     elements.showGridCheck.onchange = () => {
-      UIState.showGrid = elements.showGridCheck.checked;
+      UIState.showGrid = Boolean(elements.showGridCheck.checked);
       toggleGridVisibility(UIState.showGrid);
     };
   }
-  
-  // Clear button
-  elements.clearButton.onclick = resetScene;
 
-  // Random scenario button
+  if (elements.clearButton) {
+    elements.clearButton.onclick = resetScene;
+  }
+
   if (elements.randomButton) {
     elements.randomButton.onclick = createRandomScenario;
   }
 }
 
-/**
- * Get the current UI values
- * @returns {Object} - Object containing current UI values
- */
 export function getUIValues() {
   return {
     currentHeight: UIState.currentHeight,
     currentTension: UIState.currentTension,
-    showGrid: UIState.showGrid
+    showGrid: UIState.showGrid,
   };
 }

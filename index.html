@@ -4,11 +4,39 @@
   <meta charset="UTF-8" />
   <title>GridScaper</title>
   <style>
-    html,body,#c{margin:0;height:100%;overflow:hidden;font-family:sans-serif}
-    #hud{position:fixed;top:8px;left:8px;background:#0008;color:#fff;padding:6px 10px;font-size:12px;line-height:1.4;border-radius:6px;user-select:none}
-    #hud input[type="range"],#hud select{vertical-align:middle}
-    #hud label{margin-right:4px}
-    #jsonPanel{
+    html,
+    body,
+    #c {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+
+    #hud {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      background: rgba(0, 0, 0, 0.55);
+      color: #fff;
+      padding: 6px 10px;
+      font-size: 12px;
+      line-height: 1.4;
+      border-radius: 6px;
+      user-select: none;
+    }
+
+    #hud input[type="range"],
+    #hud select,
+    #hud button {
+      vertical-align: middle;
+    }
+
+    #hud label {
+      margin-right: 4px;
+    }
+
+    #jsonPanel {
       position: absolute;
       top: 0;
       right: 0;
@@ -23,6 +51,7 @@
       z-index: 1000;
       box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
     }
+
     .panel-title {
       padding: 8px;
       background: #323232;
@@ -35,17 +64,21 @@
       align-items: center;
       border-bottom: 1px solid #2c2c2c;
     }
+
     .panel-title:hover {
       background: #3a3a3a;
     }
+
     .panel-content {
       max-height: calc(100vh - 120px);
       overflow: auto;
     }
+
     .panel-folder {
       margin-bottom: 4px;
       border-bottom: 1px solid #2c2c2c;
     }
+
     .panel-folder-title {
       padding: 8px;
       cursor: pointer;
@@ -53,36 +86,44 @@
       display: flex;
       justify-content: space-between;
     }
+
     .panel-folder-title:hover {
       background-color: #2f2f2f;
     }
+
     .panel-folder-content {
       padding: 8px;
       overflow: hidden;
       transition: height 0.3s ease;
       background-color: #1a1a1a;
     }
+
     .folder-collapsed .panel-folder-content {
       height: 0 !important;
       padding: 0;
     }
+
     .json-key { color: #9cdcfe; }
     .json-string { color: #ce9178; }
     .json-number { color: #b5cea8; }
     .json-boolean { color: #569cd6; }
-    .json-null { color: #777777; }
+    .json-null { color: #777; }
+
     .json-row {
       padding: 4px 8px;
       display: flex;
       justify-content: space-between;
     }
+
     .json-row:nth-child(odd) {
-      background-color: #222222;
+      background-color: #222;
     }
+
     .json-value {
       text-align: right;
     }
-  </style>  <script src="https://unpkg.com/three@0.139.2/build/three.min.js"></script>
+  </style>
+  <script src="https://unpkg.com/three@0.139.2/build/three.min.js"></script>
   <script src="https://unpkg.com/three@0.139.2/examples/js/controls/OrbitControls.js"></script>
   <script type="module" src="js/config.js"></script>
   <script type="module" src="js/terrain.js"></script>
@@ -92,29 +133,63 @@
 </head>
 <body>
   <div id="hud">
-    <div><strong>Left-click</strong>: add pole • <strong>Right-click</strong>: delete pole</div>
-    <label>New pole height: <input id="heightSlider" type="range" min="1" max="40" step="1" value="20"></label>
+    <div><strong>Left-click</strong>: add pole | <strong>Right-click</strong>: delete pole</div>
+    <label>New pole height: <input id="heightSlider" type="range" min="1" max="40" step="1" value="20" /></label>
     <span id="heightLabel">20</span> ft
     &nbsp;&nbsp;|&nbsp;&nbsp;
-    <label>Terrain: <select id="terrainSelect"><option value="flat" selected>Flat</option><option value="hills">Rolling Hills</option><option value="hillsTrees">Hills + Trees</option></select></label>
+    <label>
+      Terrain:
+      <select id="terrainSelect">
+        <option value="flat" selected>Flat</option>
+        <option value="hills">Rolling Hills</option>
+        <option value="hillsTrees">Hills + Trees</option>
+      </select>
+    </label>
     &nbsp;&nbsp;|&nbsp;&nbsp;
-    <label>Tension: <input id="tensionSlider" type="range" min="0.2" max="5" step="0.1" value="1"></label>
-    <span id="tensionLabel">1.0×</span>
+    <label>
+      Tension:
+      <input id="tensionSlider" type="range" min="0.2" max="5" step="0.1" value="1" />
+    </label>
+    <span id="tensionLabel">1.0 A</span>
     &nbsp;&nbsp;|&nbsp;&nbsp;
-    <label><input type="checkbox" id="showGridCheck" checked> Grid</label>
+    <label><input type="checkbox" id="showGridCheck" checked /> Grid</label>
     &nbsp;&nbsp;|&nbsp;&nbsp;
-    <label>Setting: <select id="settingSelect"><option value="none" selected>None</option><option value="residential">Residential</option><option value="commercial">Commercial</option><option value="urban">Urban</option><option value="rural">Rural</option></select></label>
+    <label>
+      Setting:
+      <select id="settingSelect">
+        <option value="none" selected>None</option>
+        <option value="residential">Residential</option>
+        <option value="commercial">Commercial</option>
+        <option value="urban">Urban</option>
+        <option value="rural">Rural</option>
+      </select>
+    </label>
     &nbsp;&nbsp;|&nbsp;&nbsp;
-    <label>Environment: <select id="environmentSelect"><option value="none" selected>None</option><option value="coastal">Coastal</option><option value="mountain">Mountain</option><option value="desert">Desert</option><option value="city">City</option></select></label>
+    <label>
+      Environment:
+      <select id="environmentSelect">
+        <option value="none" selected>None</option>
+        <option value="coastal">Coastal</option>
+        <option value="mountain">Mountain</option>
+        <option value="desert">Desert</option>
+        <option value="city">City</option>
+      </select>
+    </label>
     &nbsp;&nbsp;|&nbsp;&nbsp;
-    <label>Equipment: <select id="equipmentSelect"><option value="distribution" selected>Distribution</option><option value="subTransmission">Sub Transmission</option><option value="bulkTransmission">Bulk Transmission</option><option value="generation">Generation</option></select></label>
+    <label>
+      Equipment:
+      <select id="equipmentSelect">
+        <option value="distribution" selected>Distribution</option>
+        <option value="subTransmission">Sub Transmission</option>
+        <option value="bulkTransmission">Bulk Transmission</option>
+        <option value="generation">Generation</option>
+      </select>
+    </label>
     &nbsp;&nbsp;|&nbsp;&nbsp;
     <button id="downloadJSON">Download</button>
     <button id="clearScene">Clear Scene</button>
     <button id="randomScenario">Random Terrain</button>
   </div>
   <canvas id="c"></canvas>
-  </div>
-
 </body>
 </html>

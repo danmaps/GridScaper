@@ -290,14 +290,63 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function clearSceneElements() {
-    scene.children.filter(o => o.userData.environmentElement).forEach(e => {
-      scene.remove(e);
-      if (e.geometry) e.geometry.dispose();
+    scene.children.filter(o => o.userData.environmentElement).forEach(obj => {
+      scene.remove(obj);
+      if (obj.traverse) {
+        obj.traverse(child => {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) {
+            if (Array.isArray(child.material)) {
+              child.material.forEach(m => m.dispose());
+            } else {
+              child.material.dispose();
+            }
+          }
+        });
+      } else {
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) {
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach(m => m.dispose());
+          } else {
+            obj.material.dispose();
+          }
+        }
+      }
     });
   }
+
+  function clearSettingElements() {
+    scene.children.filter(o => o.userData.settingElement).forEach(obj => {
+      scene.remove(obj);
+      if (obj.traverse) {
+        obj.traverse(child => {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) {
+            if (Array.isArray(child.material)) {
+              child.material.forEach(m => m.dispose());
+            } else {
+              child.material.dispose();
+            }
+          }
+        });
+      } else {
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) {
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach(m => m.dispose());
+          } else {
+            obj.material.dispose();
+          }
+        }
+      }
+    });
+  }
+
   function updateEnvironment() {
     clearSceneElements();
-    
+    clearSettingElements();
+
     if (elements.environmentSelect.value === 'coastal') {
       addCoastalElements();
     } else if (elements.environmentSelect.value === 'mountain') {
@@ -307,9 +356,11 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (elements.environmentSelect.value === 'city') {
       addCityElements();
     }
-    
+
     updateTerrainColor();
-  }  function updateTerrainColor() {
+  }
+
+  function updateTerrainColor() {
     if (!window.terrain) return;
     
     let terrainColor = ENVIRONMENT_COLORS.default;
@@ -323,29 +374,126 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function addCoastalElements() {
+    if (!window.terrain) return;
+
     const waterWidth = 80;
-    const waterDepth = window.terrain ? window.terrain.geometry.parameters.height : 100;
-    const terrainPos = window.terrain ? window.terrain.position.z : 0;
-    const terrainWidth = window.terrain ? window.terrain.geometry.parameters.width : 100;
-    
-    // Create reflective water material
-    const waterMaterial = new THREE.MeshStandardMaterial({ 
-      color: 0x1e90ff, 
-      transparent: true, 
+    const waterDepth = window.terrain.geometry.parameters.height;
+    const terrainPos = window.terrain.position.z;
+    const terrainWidth = window.terrain.geometry.parameters.width;
+
+    const waterMaterial = new THREE.MeshStandardMaterial({
+      color: 0x1e90ff,
+      transparent: true,
       opacity: 0.8,
       metalness: 0.9,
       roughness: 0.1,
       envMapIntensity: 1.5
     });
-    
-    // Main water body
+
     const waterGeometry = new THREE.PlaneGeometry(waterWidth, waterDepth, 32, 24);
     const water = new THREE.Mesh(waterGeometry, waterMaterial);
     water.rotation.x = -Math.PI / 2;
-    water.position.set(-terrainWidth/2 - waterWidth/2, 0.1, terrainPos);
+    water.position.set(-terrainWidth / 2 - waterWidth / 2, 0.1, terrainPos);
     water.userData.environmentElement = true;
     water.userData.isWater = true;
+    const originalPositions = [];
+    const posAttr = waterGeometry.attributes.position;
+    for (let i = 0; i < posAttr.count; i++) {
+      originalPositions.push({
+        x: posAttr.getX(i),
+        y: posAttr.getY(i),
+        z: posAttr.getZ(i)
+      });
+    }
+    water.userData.waveInfo = {
+      time: 0,
+      originalPositions
+    };
     scene.add(water);
+
+    const foamMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+    const foamGeometry = new THREE.PlaneGeometry(10, waterDepth, 1, 24);
+    const foam = new THREE.Mesh(foamGeometry, foamMaterial);
+    foam.rotation.x = -Math.PI / 2;
+    foam.position.set(-terrainWidth / 2 - 5, 0.12, terrainPos);
+    foam.userData.environmentElement = true;
+    foam.userData.isWaterFoam = true;
+    scene.add(foam);
+  }
+
+  function addMountainElements() {
+    if (!window.terrain) return;
+
+    const rockMaterial = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.8 });
+    const terrainWidth = window.terrain.geometry.parameters.width;
+    const terrainDepth = window.terrain.geometry.parameters.height;
+    const terrainPos = window.terrain.position.z;
+
+    for (let i = 0; i < 18; i++) {
+      const geometry = new THREE.DodecahedronGeometry(THREE.MathUtils.randFloat(1.2, 3.5));
+      const rock = new THREE.Mesh(geometry, rockMaterial.clone());
+      const x = THREE.MathUtils.randFloat(-terrainWidth / 2, terrainWidth / 2);
+      const z = THREE.MathUtils.randFloat(-terrainDepth / 2, terrainDepth / 2) + terrainPos;
+      const y = hAt(x, z);
+      rock.position.set(x, y + 1.0, z);
+      rock.userData.environmentElement = true;
+      scene.add(rock);
+    }
+  }
+
+  function addDesertElements() {
+    if (!window.terrain) return;
+
+    const duneMaterial = new THREE.MeshStandardMaterial({ color: 0xd2b48c, roughness: 0.5 });
+    const cactusMaterial = new THREE.MeshStandardMaterial({ color: 0x2e8b57 });
+    const terrainWidth = window.terrain.geometry.parameters.width;
+    const terrainDepth = window.terrain.geometry.parameters.height;
+    const terrainPos = window.terrain.position.z;
+
+    for (let i = 0; i < 8; i++) {
+      const geometry = new THREE.ConeGeometry(THREE.MathUtils.randFloat(6, 10), THREE.MathUtils.randFloat(2, 3), 16);
+      geometry.rotateX(-Math.PI / 2);
+      const dune = new THREE.Mesh(geometry, duneMaterial.clone());
+      const x = THREE.MathUtils.randFloat(-terrainWidth / 3, terrainWidth / 3);
+      const z = THREE.MathUtils.randFloat(-terrainDepth / 2, terrainDepth / 2) + terrainPos;
+      const y = hAt(x, z);
+      dune.position.set(x, y + 0.5, z);
+      dune.userData.environmentElement = true;
+      scene.add(dune);
+    }
+
+    for (let i = 0; i < 12; i++) {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 4, 8), cactusMaterial.clone());
+      const x = THREE.MathUtils.randFloat(-terrainWidth / 2, terrainWidth / 2);
+      const z = THREE.MathUtils.randFloat(-terrainDepth / 2, terrainDepth / 2) + terrainPos;
+      const y = hAt(x, z);
+      trunk.position.set(x, y + 2, z);
+      trunk.userData.environmentElement = true;
+      scene.add(trunk);
+    }
+  }
+
+  function addCityElements() {
+    if (!window.terrain) return;
+
+    const buildingMaterial = new THREE.MeshStandardMaterial({ color: 0x808080, metalness: 0.35, roughness: 0.6 });
+    const terrainWidth = window.terrain.geometry.parameters.width;
+    const terrainDepth = window.terrain.geometry.parameters.height;
+    const terrainPos = window.terrain.position.z;
+
+    for (let i = 0; i < 14; i++) {
+      const width = THREE.MathUtils.randFloat(2.5, 6);
+      const depth = THREE.MathUtils.randFloat(2.5, 6);
+      const height = THREE.MathUtils.randFloat(6, 14);
+      const geometry = new THREE.BoxGeometry(width, height, depth);
+      const building = new THREE.Mesh(geometry, buildingMaterial.clone());
+      const x = THREE.MathUtils.randFloat(-terrainWidth / 3, terrainWidth / 3);
+      const z = THREE.MathUtils.randFloat(-terrainDepth / 2, terrainDepth / 2) + terrainPos;
+      const y = hAt(x, z);
+      building.position.set(x, y + height / 2, z);
+      building.userData.environmentElement = true;
+      scene.add(building);
+    }
   }
 
   /* ------- UI initialization ------- */
@@ -703,6 +851,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   function resetScene() {
+    clearSceneElements();
+    clearSettingElements();
+
     poles.forEach(p => scene.remove(p.obj));
     poles.length = 0;
     scene.children.filter(o => o.userData.span).forEach(l => {
@@ -711,7 +862,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     updateGhost();
     birds.length = 0;
-    
+
     // Hide all indicators when resetting
     lastPoleIndicator.visible = false;
     lastPoleInnerIndicator.visible = false;
@@ -1069,17 +1220,13 @@ document.addEventListener('DOMContentLoaded', () => {
   animate();
 
   function updateSceneElements() {
-    const sceneElements = {
-      buildings: []
-    };
-
-    sceneElements.buildings.forEach(b => scene.remove(b));
-    sceneElements.buildings = [];
-    
+    clearSettingElements();
     updatePoleAppearance();
     addRandomBuildings();
     addRoads();
-  }  function updatePoleAppearance() {
+  }
+
+  function updatePoleAppearance() {
     let poleColor = EQUIPMENT_COLORS.distribution.pole;
     let crossArmColor = EQUIPMENT_COLORS.distribution.crossArm;
     
@@ -1127,6 +1274,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
           building.position.set(x, y, z);
           building.userData.environmentElement = true;
+          building.userData.settingElement = true;
 
           scene.add(building);
           buildingCount++;
@@ -1159,6 +1307,7 @@ document.addEventListener('DOMContentLoaded', () => {
       road.geometry.attributes.position.needsUpdate = true;
       road.geometry.computeVertexNormals();
       road.userData.environmentElement = true;
+      road.userData.settingElement = true;
       scene.add(road);
     }
 
@@ -1177,6 +1326,7 @@ document.addEventListener('DOMContentLoaded', () => {
       road.geometry.attributes.position.needsUpdate = true;
       road.geometry.computeVertexNormals();
       road.userData.environmentElement = true;
+      road.userData.settingElement = true;
       scene.add(road);
     }
   }  function updateLastPoleIndicator() {
