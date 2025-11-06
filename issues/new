@@ -1,0 +1,26 @@
+### Title:
+feat: Simplified catenary API from existing sag calc
+
+### Body:
+**Goal**  
+Expose a simple function `getConductorCurve(span): Vec3[]` that returns points along the current catenary/sag for evaluation and rendering.
+
+**Acceptance Criteria**  
+- Given pole A/B positions, height, and tension/sag factor, return a polyline suitable for collision checks.  
+- Works with existing sag controls.
+
+**Code Reference**  
+- Existing sag math & span samples in [\`drawSpan()\`](https://github.com/danmaps/GridScaper/blob/main/js/main.js#L568-L602):  
+```js
+function drawSpan(a, b) {
+  // for (let i = 0; i <= SAMPLES; i++) { ... points.push(new THREE.Vector3(...)) }
+}
+```
+- SAMPLES/BASE_H from [\`js/config.js\`](https://github.com/danmaps/GridScaper/blob/main/js/config.js)
+
+**Tasks**  
+- [ ] Refactor sag math into `utils/catenary.ts` as a reusable function.
+- [ ] Add JSDoc + example usage.
+
+**Labels:** feat, core, vibeathon  
+**Milestone:** AI Clearance Coach
