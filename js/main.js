@@ -1,6 +1,7 @@
 import { CONSTANTS, HELPERS, BIRD_SETTINGS, createMaterials, ENVIRONMENT_COLORS, EQUIPMENT_COLORS, createGeometries } from './config.js';
 import { buildTerrain as importedBuildTerrain, terrainOffsetZ, fitGroundInView } from './terrain.js';
 import { initUI, setupUI, UIState, getUIValues, elements } from './ui.js';
+import { getConductorCurve } from '../utils/catenary.js';
 
 // Make THREE available to our ES module by accessing it from window
 const THREE = window.THREE;
@@ -565,38 +566,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ------- span build & check ------- */
   function drawSpan(a, b) {
-    const crossarmHeightA = a.base + a.h; 
-    const crossarmHeightB = b.base + b.h;
-      const d = Math.hypot(b.x - a.x, b.z - a.z);
-    const sag = Math.max(0.1, d * 0.05) / UIState.currentTension;
-    
     const crossarmPositions = [-1.2, 0, 1.2];
     
-    const dirX = b.x - a.x;
-    const dirZ = b.z - a.z;
-    const dirLength = Math.sqrt(dirX * dirX + dirZ * dirZ);
-    const normalizedDirX = dirX / dirLength;
-    const normalizedDirZ = dirZ / dirLength;
-    
-    const perpX = -normalizedDirZ;
-    const perpZ = normalizedDirX;
-    
     crossarmPositions.forEach(offset => {
-      const startX = a.x + perpX * offset;
-      const startZ = a.z + perpZ * offset;
+      const curvePoints = getConductorCurve({
+        poleA: a,
+        poleB: b,
+        tension: UIState.currentTension,
+        samples: SAMPLES,
+        lateralOffset: offset,
+        terrainOffsetZ
+      });
       
-      const endX = b.x + perpX * offset;
-      const endZ = b.z + perpZ * offset;
-      
-      const pts = [];
-      
-      for (let i = 0; i <= SAMPLES; i++) {
-        const t = i / SAMPLES;
-        const x = THREE.MathUtils.lerp(startX, endX, t);
-        const z = THREE.MathUtils.lerp(startZ, endZ, t) + terrainOffsetZ;
-        const y = THREE.MathUtils.lerp(crossarmHeightA, crossarmHeightB, t) - sag * Math.sin(Math.PI * t);
-        pts.push(new THREE.Vector3(x, y, z));
-      }
+      // Convert to THREE.Vector3 for geometry
+      const pts = curvePoints.map(p => new THREE.Vector3(p.x, p.y, p.z));
       
       const geo = new THREE.BufferGeometry().setFromPoints(pts);
       const line = new THREE.Line(geo, mGood);
