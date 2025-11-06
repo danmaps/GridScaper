@@ -1,8 +1,16 @@
+// Sag calculation constants
+const MIN_SAG = 0.1;           // Minimum sag in units (prevents zero sag)
+const BASE_SAG_FACTOR = 0.05;  // Base sag as percentage of span (5%)
+
 /**
  * Calculate conductor curve points for a span between two poles.
  * 
  * This function computes the sag of a power line conductor between two poles,
  * taking into account pole positions, heights, and tension factor.
+ * 
+ * Note: Uses a sine curve approximation for sag, which provides visually
+ * acceptable results for typical power line spans. For true catenary curves
+ * under specific engineering requirements, a different formula would be needed.
  * 
  * @param {Object} options - Configuration options for the conductor curve
  * @param {Object} options.poleA - First pole data
@@ -61,8 +69,8 @@ export function getConductorCurve(options) {
   const d = Math.hypot(poleB.x - poleA.x, poleB.z - poleA.z);
 
   // Calculate sag based on span length and tension
-  // Base sag is 5% of span length, reduced by tension factor
-  const sag = Math.max(0.1, d * 0.05) / tension;
+  // Base sag is BASE_SAG_FACTOR (5%) of span length, reduced by tension factor
+  const sag = Math.max(MIN_SAG, d * BASE_SAG_FACTOR) / tension;
 
   // Calculate direction vector and perpendicular for lateral offset
   const dirX = poleB.x - poleA.x;
@@ -90,8 +98,9 @@ export function getConductorCurve(options) {
     const x = startX + (endX - startX) * t;
     const z = startZ + (endZ - startZ) * t + terrainOffsetZ;
     
-    // Linear interpolation for base height + catenary sag
-    // The sag follows a sin curve, maximum at middle (t=0.5)
+    // Linear interpolation for base height with sine curve approximation for sag
+    // Note: True catenary uses hyperbolic cosine, but sine provides good visual approximation
+    // Maximum sag occurs at the midpoint (t=0.5)
     const y = crossarmHeightA + (crossarmHeightB - crossarmHeightA) * t - sag * Math.sin(Math.PI * t);
     
     points.push({ x, y, z });
