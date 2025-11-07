@@ -1,9 +1,7 @@
-import { CONSTANTS, HELPERS, BIRD_SETTINGS, EQUIPMENT_COLORS, createMaterials, createGeometries } from './config.js';
+import { CONSTANTS, HELPERS, BIRD_SETTINGS, createMaterials, createGeometries } from './config.js';
 import { buildTerrain as importedBuildTerrain, terrainOffsetZ, fitGroundInView } from './terrain.js';
 import { initUI, setupUI, UIState, getUIValues, elements } from './ui.js';
 import { getConductorCurve } from '../utils/catenary.js';
-import { showGISImportDialog } from './gisImportDialog.js';
-import { showElevationProfileDialog } from './elevationProfileDialog.js';
 
 // Make THREE available to our ES module by accessing it from window
 const THREE = window.THREE;
@@ -170,7 +168,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Custom ground function for sloped surface through pole elevations
   let customGround = null;
-  let gisElevationSurface = null; // For GIS-imported elevation surface
   if (customPoles.length > 0) {
     customGround = (x, z) => {
       const localZ = z - terrainOffsetZ;
@@ -192,10 +189,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Height at specific location function
   function hAt(x, z) {
-    // Priority: GIS elevation surface > custom ground > flat terrain
-    if (gisElevationSurface) {
-      return gisElevationSurface(x, z);
-    }
     if (customGround) {
       return customGround(x, z);
     }
@@ -405,13 +398,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function addCoastalElements() {
-    if (!window.terrain) return;
 
-    const waterWidth = 80;
-    const waterDepth = window.terrain.geometry.parameters.height;
-    const terrainPos = window.terrain.position.z;
-    const terrainWidth = window.terrain.geometry.parameters.width;
+
+
+
+
 
     const waterMaterial = new THREE.MeshStandardMaterial({
       color: 0x1e90ff,
@@ -505,7 +496,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function addCityElements() {
+    if (!window.terrain) return;
 
+    const buildingMaterial = new THREE.MeshStandardMaterial({ color: 0x808080, metalness: 0.35, roughness: 0.6 });
+    const terrainWidth = window.terrain.geometry.parameters.width;
+    const terrainDepth = window.terrain.geometry.parameters.height;
+    const terrainPos = window.terrain.position.z;
+
+    for (let i = 0; i < 14; i++) {
+      const width = THREE.MathUtils.randFloat(2.5, 6);
+      const depth = THREE.MathUtils.randFloat(2.5, 6);
+      const height = THREE.MathUtils.randFloat(6, 14);
+      const geometry = new THREE.BoxGeometry(width, height, depth);
+      const building = new THREE.Mesh(geometry, buildingMaterial.clone());
+      const x = THREE.MathUtils.randFloat(-terrainWidth / 3, terrainWidth / 3);
+      const z = THREE.MathUtils.randFloat(-terrainDepth / 2, terrainDepth / 2) + terrainPos;
+      const y = hAt(x, z);
+      building.position.set(x, y + height / 2, z);
+      building.userData.environmentElement = true;
+      scene.add(building);
+    }
+  }
 
   /* ------- UI initialization ------- */
   // Set up UI with callbacks and dependencies
@@ -517,6 +529,7 @@ document.addEventListener('DOMContentLoaded', () => {
       resetScene,
       updateSceneElements,
       rebuild,
+      updateEnvironment,
       toggleGridVisibility,
       createRandomScenario,
       checkClearances,
@@ -524,9 +537,7 @@ document.addEventListener('DOMContentLoaded', () => {
       updateSagCalculations,
       copyScenarioLink,
       exportScene,
-      handleFileImport,
-      handleGISImport,
-      handleElevationProfileImport
+      handleFileImport
     },
     // Dependencies
     {
@@ -549,6 +560,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const terrainSel = elements.terrainSelect;
   const tensionSlider = elements.tensionSlider;
   const tensionLabel = elements.tensionLabel;
+  const settingSel = elements.settingSelect;
+  const environmentSel = elements.environmentSelect;
+  const equipmentSel = elements.equipmentSelect;
   const clearBtn = elements.clearButton;
   const showGridCheck = elements.showGridCheck;
 
@@ -556,7 +570,7 @@ document.addEventListener('DOMContentLoaded', () => {
   clearSceneElements();
   trees.clear();
   treeData.length = 0;
-  const terrain = importedBuildTerrain(scene, urlParams, customPoles, elements.terrainSelect, null, SEG, hAt, addGridLines, addDefaultTrees, null);
+  const terrain = importedBuildTerrain(scene, urlParams, customPoles, elements.terrainSelect, elements.environmentSelect, SEG, hAt, addGridLines, addDefaultTrees, updateEnvironment);
   fitGroundInView(camera, controls, terrain);
   /* ------- terrain-conforming circle creation ------- */
   function createTerrainConformingCircle(centerX, centerZ, radius, segments, scaleFactor = 1.0) {
@@ -751,7 +765,26 @@ document.addEventListener('DOMContentLoaded', () => {
             violationType = 'ground';
           }
           
-
+          // Check clearance to buildings/structures
+          const buildings = scene.children.filter(o => 
+            o.userData.environmentElement || o.userData.settingElement
+          );
+          
+          for (const building of buildings) {
+            if (building.geometry && building.geometry.type === 'BoxGeometry') {
+              const buildingBox = new THREE.Box3().setFromObject(building);
+              const point = new THREE.Vector3(x, y, z);
+              const distance = buildingBox.distanceToPoint(point);
+              
+              // Check if line point is too close to building
+              if (distance < threshold && distance > 0 && distance < minClearance) {
+                minClearance = distance;
+                const closestPoint = buildingBox.clampPoint(point, new THREE.Vector3());
+                violationPoint = { x, y, z, closestPoint };
+                violationType = 'building';
+              }
+            }
+          }
         }
       });
       
@@ -766,24 +799,37 @@ document.addEventListener('DOMContentLoaded', () => {
       if (violationPoint && minClearance < threshold) {
         hasIssues = true;
         
+        // Find the center conductor point closest to the violation location
+        let closestCenterPoint = centerConductorPoints[0];
+        let minDistance = Infinity;
+        
+        centerConductorPoints.forEach(point => {
+          const distance = Math.hypot(point.x - violationPoint.x, point.z - violationPoint.z);
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestCenterPoint = point;
+          }
+        });
+        
         if (violationType === 'ground') {
-          // Find the lowest point on the center conductor (where sag is maximum)
-          let lowestCenterPoint = centerConductorPoints[0];
-          let lowestY = centerConductorPoints[0].y;
+          // Create simple line indicator for ground clearance violation
+          const groundHeight = hAt(closestCenterPoint.x, closestCenterPoint.z);
+          const groundPoint = { x: closestCenterPoint.x, y: groundHeight, z: closestCenterPoint.z };
           
-          centerConductorPoints.forEach(point => {
-            if (point.y < lowestY) {
-              lowestY = point.y;
-              lowestCenterPoint = point;
-            }
+          const indicator = createSimpleClearanceLine(closestCenterPoint, groundPoint, minClearance, true);
+          clearanceIndicators.push({
+            label: indicator.label,
+            worldPosition: indicator.worldPosition
           });
           
-          // Create simple line indicator at the lowest point of the center conductor
-          const groundHeight = hAt(lowestCenterPoint.x, lowestCenterPoint.z);
-          const groundPoint = { x: lowestCenterPoint.x, y: groundHeight, z: lowestCenterPoint.z };
-          const actualClearance = lowestCenterPoint.y - groundHeight;
-          
-          const indicator = createSimpleClearanceLine(lowestCenterPoint, groundPoint, actualClearance, true);
+        } else if (violationType === 'building') {
+          // Create simple line indicator for building clearance violation
+          const indicator = createSimpleClearanceLine(
+            closestCenterPoint, 
+            violationPoint.closestPoint, 
+            minClearance, 
+            true
+          );
           clearanceIndicators.push({
             label: indicator.label,
             worldPosition: indicator.worldPosition
@@ -1143,19 +1189,6 @@ document.addEventListener('DOMContentLoaded', () => {
       l.geometry.dispose();
       scene.remove(l);
     });
-    
-    // Clear terrain
-    if (window.terrain) {
-      if (window.terrain.geometry) window.terrain.geometry.dispose();
-      if (window.terrain.material) window.terrain.material.dispose();
-      scene.remove(window.terrain);
-      window.terrain = null;
-    }
-    
-    // Clear GIS elevation surfaces
-    gisElevationSurface = null;
-    customGround = null;
-    
     updateGhost();
     birds.length = 0;
 
@@ -1591,6 +1624,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateSceneElements() {
     clearSettingElements();
     updatePoleAppearance();
+    addRandomBuildings();
     addRoads();
   }
 
@@ -1598,8 +1632,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let poleColor = EQUIPMENT_COLORS.distribution.pole;
     let crossArmColor = EQUIPMENT_COLORS.distribution.crossArm;
     
-    // Check if equipmentSelect exists and has a valid value
-    if (elements.equipmentSelect && elements.equipmentSelect.value && elements.equipmentSelect.value in EQUIPMENT_COLORS) {
+    if (elements.equipmentSelect.value in EQUIPMENT_COLORS) {
       poleColor = EQUIPMENT_COLORS[elements.equipmentSelect.value].pole;
       crossArmColor = EQUIPMENT_COLORS[elements.equipmentSelect.value].crossArm;
     }
@@ -1614,20 +1647,46 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
     
-    // Update the default pole and crossarm materials as well
     mPole.color.setHex(poleColor);
     mCrossArm.color.setHex(crossArmColor);
   }
 
+  function addRandomBuildings() {
+    if (!window.terrain) return;
 
+    const terrainWidth = window.terrain.geometry.parameters.width;
+    const terrainDepth = window.terrain.geometry.parameters.height;
+    const terrainPos = window.terrain.position.z;    if (elements.settingSelect.value === 'residential') {
+      const buildingSize = 3;
+      const buildingHeight = 5;
+      const rowSpacing = 10;
+      const colSpacing = 10;
+      const maxBuildings = 20;
+
+      const buildingMaterial = new THREE.MeshStandardMaterial({ color: 0x8b0000 });
+
+      let buildingCount = 0;
+      for (let row = 0; row < terrainDepth / rowSpacing && buildingCount < maxBuildings; row++) {
+        for (let col = 0; col < terrainWidth / colSpacing && buildingCount < maxBuildings; col++) {
+          const x = -terrainWidth / 2 + col * colSpacing + buildingSize / 2;
+          const z = -terrainDepth / 2 + row * rowSpacing + buildingSize / 2 + terrainPos;
+          const y = hAt(x, z) + buildingHeight / 2;
+
+          const buildingGeometry = new THREE.BoxGeometry(buildingSize, buildingHeight, buildingSize);
+          const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
+          building.position.set(x, y, z);
+          building.userData.environmentElement = true;
+          building.userData.settingElement = true;
+
+          scene.add(building);
+          buildingCount++;
+        }
+      }
+    }
+  }
 
   function addRoads() {
     if (!window.terrain) return;
-    
-    // Check if terrain has the expected geometry structure
-    if (!window.terrain.geometry || !window.terrain.geometry.parameters) {
-      return; // Skip for elevation profile terrain
-    }
 
     const terrainWidth = window.terrain.geometry.parameters.width;
     const terrainDepth = window.terrain.geometry.parameters.height;
@@ -1934,6 +1993,14 @@ document.addEventListener('DOMContentLoaded', () => {
         params.set('terrain', elements.terrainSelect.value);
       }
       
+      if (elements.environmentSelect && elements.environmentSelect.value !== 'rural') {
+        params.set('environment', elements.environmentSelect.value);
+      }
+      
+      if (elements.settingSelect && elements.settingSelect.value !== 'distribution') {
+        params.set('setting', elements.settingSelect.value);
+      }
+      
       if (elements.equipmentSelect && elements.equipmentSelect.value) {
         params.set('equipment', elements.equipmentSelect.value);
       }
@@ -2041,6 +2108,9 @@ document.addEventListener('DOMContentLoaded', () => {
           tension: UIState.currentTension,
           clearanceThreshold: UIState.clearanceThreshold,
           terrain: elements.terrainSelect?.value || 'flat',
+          environment: elements.environmentSelect?.value || 'rural', 
+          setting: elements.settingSelect?.value || 'distribution',
+          equipment: elements.equipmentSelect?.value || 'distribution',
           showGrid: UIState.showGrid,
           showSagCalculations: UIState.showSagCalculations,
           showClearanceBuffers: UIState.showClearanceBuffers,
@@ -2198,12 +2268,12 @@ document.addEventListener('DOMContentLoaded', () => {
           new URLSearchParams(), // Empty URL params since we have all the data
           customPolesForTerrain, 
           elements.terrainSelect, 
-          null, 
+          elements.environmentSelect, 
           SEG, 
           hAt, 
           addGridLines, 
           addDefaultTrees, 
-          null
+          updateEnvironment
         );
         
         fitGroundInView(camera, controls, terrain);
@@ -2256,6 +2326,18 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.terrainSelect.value = settings.terrain;
       }
       
+      if (settings.environment && elements.environmentSelect) {
+        elements.environmentSelect.value = settings.environment;
+      }
+      
+      if (settings.setting && elements.settingSelect) {
+        elements.settingSelect.value = settings.setting;
+      }
+      
+      if (settings.equipment && elements.equipmentSelect) {
+        elements.equipmentSelect.value = settings.equipment;
+      }
+      
       if (settings.showGrid !== undefined) {
         UIState.showGrid = settings.showGrid;
         if (elements.showGridCheck) {
@@ -2289,6 +2371,7 @@ document.addEventListener('DOMContentLoaded', () => {
       rebuild();
       updateCrossarmOrientations();
       updateLastPoleIndicator();
+      updateEnvironment();
       toggleGridVisibility(UIState.showGrid);
       updateSagCalculations();
       updatePoleHeightLabels();
@@ -2377,179 +2460,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Trigger file picker
     fileInput.click();
-  }
-
-  function handleGISImport() {
-    showGISImportDialog((gisData) => {
-      try {
-        showLoadingOverlay('Processing GIS data...');
-        
-        // Clear existing scene
-        resetScene();
-        
-        // Store the GIS elevation surface
-        gisElevationSurface = gisData.elevationSurface;
-        
-        // Create custom ground function that uses GIS elevations
-        customGround = gisElevationSurface;
-        
-        showLoadingOverlay('Building terrain from GIS elevation data...');
-        
-        // Create custom poles data for terrain building
-        const customPolesForTerrain = gisData.poles.map(pole => ({
-          x: pole.x,
-          z: pole.z,
-          h: pole.height,
-          elev: pole.elevation
-        }));
-        
-        // Rebuild terrain with GIS data
-        const terrain = importedBuildTerrain(
-          scene, 
-          new URLSearchParams(), 
-          customPolesForTerrain, 
-          elements.terrainSelect, 
-          null, 
-          SEG, 
-          hAt, 
-          addGridLines, 
-          addDefaultTrees, 
-          null
-        );
-        
-        fitGroundInView(camera, controls, terrain);
-        
-        showLoadingOverlay('Adding poles from GIS coordinates...');
-        
-        // Add poles with GIS data
-        gisData.poles.forEach(poleData => {
-          const mesh = new THREE.Mesh(poleGeo, mPole);
-          mesh.scale.y = poleData.height / BASE_H;
-          mesh.position.set(poleData.x, poleData.elevation + poleData.height / 2, poleData.z + terrainOffsetZ);
-          mesh.userData.pole = true;
-          mesh.userData.gisId = poleData.id;
-          mesh.userData.originalCoords = poleData.originalCoords;
-
-          const crossArm = new THREE.Mesh(crossArmGeo, mCrossArm);
-          crossArm.position.y = 5;
-          mesh.add(crossArm);
-
-          scene.add(mesh);
-          poles.push({ 
-            x: poleData.x, 
-            z: poleData.z, 
-            h: poleData.height, 
-            base: poleData.elevation, 
-            obj: mesh,
-            gisId: poleData.id,
-            originalCoords: poleData.originalCoords
-          });
-        });
-        
-        showLoadingOverlay('Finalizing GIS scene...');
-        
-        // Build spans and update scene
-        rebuild();
-        updateCrossarmOrientations();
-        updateLastPoleIndicator();
-        toggleGridVisibility(UIState.showGrid);
-        updateSagCalculations();
-        updatePoleHeightLabels();
-        checkClearances();
-        
-        // Success message
-        setTimeout(() => {
-          hideLoadingOverlay();
-          alert(`✅ GIS data imported successfully!\n\n` +
-                `📍 ${gisData.poles.length} poles imported\n` +
-                `📏 Scene dimensions: ${gisData.metadata.sceneSize.width}×${gisData.metadata.sceneSize.depth} ft\n` +
-                `🧭 Overall bearing: ${gisData.metadata.overallBearing}°\n` +
-                `⛰️ Elevation range: ${gisData.metadata.elevationRange.toFixed(1)} ft\n` +
-                `🔄 Scale factor: ${gisData.metadata.scaleFactor.toFixed(2)}x`);
-        }, 100);
-        
-      } catch (error) {
-        hideLoadingOverlay();
-        console.error('Error importing GIS data:', error);
-        alert(`❌ Error importing GIS data:\n${error.message}`);
-      }
-    });
-  }
-
-  function handleElevationProfileImport() {
-    showElevationProfileDialog((elevationData) => {
-      try {
-        showLoadingOverlay('Processing elevation profile...');
-        
-        // Clear existing scene completely
-        resetScene();
-        
-        // Clear any existing terrain meshes from scene
-        const terrainMeshesToRemove = [];
-        scene.traverse((child) => {
-          if (child.isMesh && (
-            child.userData.terrain || 
-            child.userData.elevationProfile ||
-            child.geometry.type === 'PlaneGeometry'
-          )) {
-            terrainMeshesToRemove.push(child);
-          }
-        });
-        terrainMeshesToRemove.forEach(mesh => {
-          if (mesh.geometry) mesh.geometry.dispose();
-          if (mesh.material) mesh.material.dispose();
-          scene.remove(mesh);
-        });
-        
-        // Clear terrain references
-        window.terrain = null;
-        gisElevationSurface = null;
-        customGround = null;
-        
-        // Store the elevation function for terrain lookups
-        gisElevationSurface = elevationData.elevationFunction;
-        customGround = gisElevationSurface;
-        
-        showLoadingOverlay('Building terrain surface...');
-        
-        // Create the terrain mesh from elevation profile
-        const { terrain, surfaceMesh } = elevationData.terrainData;
-        scene.add(surfaceMesh);
-        
-        // Store terrain reference for future clearing
-        window.terrain = surfaceMesh;
-        
-        // Store terrain reference - pass the mesh directly to fitGroundInView
-        fitGroundInView(camera, controls, surfaceMesh);
-        
-        showLoadingOverlay('Setting up interactive environment...');
-        
-        // Add grid if enabled
-        toggleGridVisibility(UIState.showGrid);
-        
-        // Update UI elements
-        updateSceneElements();
-        updateLastPoleIndicator();
-        
-        setTimeout(() => {
-          hideLoadingOverlay();
-          
-          const { metadata } = elevationData;
-          alert(`✅ Elevation profile imported successfully!\n\n` +
-                `📊 ${metadata.points} elevation points\n` +
-                `📏 Profile length: ${metadata.profileLength?.toFixed(1) || 'N/A'} ft\n` +
-                `⛰️ Elevation range: ${metadata.elevationRange.min.toFixed(1)} - ${metadata.elevationRange.max.toFixed(1)} ft\n` +
-                `📐 Height span: ${metadata.elevationRange.span.toFixed(1)} ft\n` +
-                `🎯 Scene size: ${metadata.sceneWidth} × ${metadata.sceneDepth} ft\n\n` +
-                `👆 Click anywhere on the terrain to place poles!`);
-        }, 100);
-        
-      } catch (error) {
-        hideLoadingOverlay();
-        console.error('Error importing elevation profile:', error);
-        alert(`❌ Error importing elevation profile:\n${error.message}`);
-      }
-    });
   }
 
   // Add drag and drop functionality

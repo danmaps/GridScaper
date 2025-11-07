@@ -1,7 +1,5 @@
 **ready‑to‑paste backlog** for a `vibeathon` branch that turns GridScaper into a competition‑ready POC. I grouped issues by milestone/epic and wrote them in a GitHub‑friendly format (title + body) with clear **goals, acceptance criteria, and tasks**. Where relevant, I referenced existing repo artifacts (URL params, scene export, environments/contexts) so you can wire things up quickly. [\[github.com\]](https://github.com/danmaps/gridscaper), [\[danmaps.github.io\]](https://danmaps.github.io/GridScaper/?poles-distances=0,25,50&poles-heights=20,25,20&poles-elevations=10,0,10), [\[github.com\]](https://github.com/danmaps/GridScaper/blob/main/GridScaper_Contexts_and_Equipment.md)
 
-> **How to use:** Create three milestones—**AI Clearance Coach**, **Share & Import**, **Cost/Risk**—then paste each issue below into GitHub. Apply labels like `feat`, `ui`, `perf`, `docs`, `tech-debt`, `good first issue`.
-
 ***
 
 ## Milestone: AI Clearance Coach
@@ -443,4 +441,46 @@ Add CTRL+Z / CTRL+Y for pole add/remove/move and parameter changes.
 *   **Optional:** Issues 21–22
 
 ***
+
+new idea: given a list of lat longs, extrapolate that onto a surface and list of poles with a certain height
+
+33.937721	-116.527342
+33.937721	-116.527322
+33.936328	-116.527344
+33.933478	-116.527267
+33.934119	-116.527262
+33.934872	-116.527346
+33.937032	-116.527343
+33.935559	-116.527345
+
+✅ **IMPLEMENTED**: GIS Data Import Feature
+
+This feature has been fully implemented! GridScaper now supports importing real-world GIS data including:
+
+* **CSV file upload** with lat/long coordinates and elevation data
+* **Automatic coordinate conversion** from geographic to local scene coordinates  
+* **True 3D terrain generation** based on elevation data interpolation
+* **Support for various CSV formats** (with or without headers)
+* **Interactive import dialog** with data preview and conversion options
+* **Sample data** included for testing the California desert coordinates listed above
+
+**How to use:**
+
+1. Click the "🗺️ Import GIS" button in the control panel
+2. Upload a CSV file, paste CSV data, or use the sample data
+3. Preview and configure import options (scaling, terrain interpolation method)
+4. Import to create a scene with poles positioned at real-world coordinates
+
+**Supported CSV format:**
+
+```csv
+lat,lng,elevation,pole_height,pole_id
+33.937721,-116.527342,1050,25,POLE_001
+33.937721,-116.527322,1048,25,POLE_002
+...
+```
+
+The system automatically handles coordinate conversion, terrain surface generation using elevation interpolation, and creates a fully interactive 3D scene that preserves the spatial relationships from the real-world data.
+
+This addresses the original idea of supporting "true xy positions of poles instead of only a linear set of poles" and enables real-world scenarios where users have existing pole location datasets from surveying, GIS systems, or planning software.
 

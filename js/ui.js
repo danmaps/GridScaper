@@ -2,8 +2,12 @@ import { CONSTANTS } from './config.js';
 
 export const UIState = {
   currentHeight: 20,
-  currentTension: 1,
-  showGrid: true
+  currentTension: 2000, // Changed to pounds
+  showGrid: true,
+  clearanceThreshold: 15,
+  showPoleHeightLabels: false,
+  showSagCalculations: false,
+  showClearanceBuffers: false
 };
 
 export const elements = {
@@ -12,12 +16,24 @@ export const elements = {
   get terrainSelect() { return document.getElementById('terrainSelect'); },
   get tensionSlider() { return document.getElementById('tensionSlider'); },
   get tensionLabel() { return document.getElementById('tensionLabel'); },
-  get settingSelect() { return document.getElementById('settingSelect'); },
-  get environmentSelect() { return document.getElementById('environmentSelect'); },
-  get equipmentSelect() { return document.getElementById('equipmentSelect'); },
   get clearButton() { return document.getElementById('clearScene'); },
   get showGridCheck() { return document.getElementById('showGridCheck'); },
-  get randomButton() { return document.getElementById('randomScenario'); }
+  get randomButton() { return document.getElementById('randomScenario'); },
+  get clearanceThreshold() { return document.getElementById('clearanceThreshold'); },
+  get clearanceLabel() { return document.getElementById('clearanceLabel'); },
+  get clearanceWarning() { return document.getElementById('clearanceWarning'); },
+  get showPoleHeightLabels() { return document.getElementById('showPoleHeightLabels'); },
+  get copyLink() { return document.getElementById('copyLink'); },
+  get copyLinkToast() { return document.getElementById('copyLinkToast'); },
+  get downloadJSON() { return document.getElementById('downloadJSON'); },
+  get importJSON() { return document.getElementById('importJSON'); },
+  get importGIS() { return document.getElementById('importGIS'); },
+  get importElevation() { return document.getElementById('importElevation'); },
+  get hudToggle() { return document.getElementById('hudToggle'); },
+  get hudContent() { return document.getElementById('hudContent'); },
+  get hudCollapseBtn() { return document.getElementById('hudCollapseBtn'); },
+  get showSagCalculations() { return document.getElementById('showSagCalculations'); },
+  get showClearanceBuffers() { return document.getElementById('showClearanceBuffers'); }
 };
 
 export function initUI() {
@@ -28,11 +44,24 @@ export function initUI() {
 
   if (elements.tensionSlider) {
     UIState.currentTension = Number(elements.tensionSlider.value);
-    elements.tensionLabel.textContent = `${UIState.currentTension.toFixed(1)} A`;
+    elements.tensionLabel.textContent = `${UIState.currentTension} lbs`;
   }
 
   if (elements.showGridCheck) {
     UIState.showGrid = Boolean(elements.showGridCheck.checked);
+  }
+
+  if (elements.clearanceThreshold) {
+    UIState.clearanceThreshold = Number(elements.clearanceThreshold.value);
+    elements.clearanceLabel.textContent = UIState.clearanceThreshold;
+  }
+
+  if (elements.showPoleHeightLabels) {
+    UIState.showPoleHeightLabels = Boolean(elements.showPoleHeightLabels.checked);
+  }
+
+  if (elements.showSagCalculations) {
+    UIState.showSagCalculations = Boolean(elements.showSagCalculations.checked);
   }
 
   return { elements };
@@ -45,9 +74,16 @@ export function setupUI(callbacks, dependencies) {
     resetScene,
     updateSceneElements,
     rebuild,
-    updateEnvironment,
     toggleGridVisibility,
-    createRandomScenario
+    createRandomScenario,
+    checkClearances,
+    updatePoleHeightLabels,
+    updateSagCalculations,
+    copyScenarioLink,
+    exportScene,
+    handleFileImport,
+    handleGISImport,
+    handleElevationProfileImport
   } = callbacks;
 
   const {
@@ -81,40 +117,29 @@ export function setupUI(callbacks, dependencies) {
         urlParams,
         customPoles,
         elements.terrainSelect,
-        elements.environmentSelect,
+        null, // No environment select
         SEG,
         hAt,
         addGridLines,
         addDefaultTrees,
-        updateEnvironment
+        null // No updateEnvironment function
       );
       resetScene();
       updateSceneElements();
     };
   }
 
+
+
   if (elements.tensionSlider) {
     elements.tensionSlider.oninput = () => {
       UIState.currentTension = Number(elements.tensionSlider.value);
-      elements.tensionLabel.textContent = `${UIState.currentTension.toFixed(1)} A`;
+      elements.tensionLabel.textContent = `${UIState.currentTension} lbs`;
       rebuild();
     };
   }
 
-  if (elements.settingSelect) {
-    elements.settingSelect.onchange = updateSceneElements;
-  }
 
-  if (elements.environmentSelect) {
-    elements.environmentSelect.onchange = () => {
-      updateEnvironment();
-      updateSceneElements();
-    };
-  }
-
-  if (elements.equipmentSelect) {
-    elements.equipmentSelect.onchange = updateSceneElements;
-  }
 
   if (elements.showGridCheck) {
     elements.showGridCheck.onchange = () => {
@@ -130,6 +155,63 @@ export function setupUI(callbacks, dependencies) {
   if (elements.randomButton) {
     elements.randomButton.onclick = createRandomScenario;
   }
+
+  if (elements.copyLink) {
+    elements.copyLink.onclick = copyScenarioLink;
+  }
+
+  if (elements.downloadJSON) {
+    elements.downloadJSON.onclick = exportScene;
+  }
+
+  if (elements.importJSON) {
+    elements.importJSON.onclick = handleFileImport;
+  }
+
+  if (elements.importGIS) {
+    elements.importGIS.onclick = handleGISImport;
+  }
+
+  if (elements.importElevation) {
+    elements.importElevation.onclick = handleElevationProfileImport;
+  }
+
+  if (elements.clearanceThreshold) {
+    elements.clearanceThreshold.oninput = () => {
+      UIState.clearanceThreshold = Number(elements.clearanceThreshold.value);
+      elements.clearanceLabel.textContent = UIState.clearanceThreshold;
+      if (checkClearances) {
+        checkClearances();
+      }
+    };
+  }
+
+  if (elements.showPoleHeightLabels) {
+    elements.showPoleHeightLabels.onchange = () => {
+      UIState.showPoleHeightLabels = Boolean(elements.showPoleHeightLabels.checked);
+      if (updatePoleHeightLabels) {
+        updatePoleHeightLabels();
+      }
+    };
+  }
+
+  if (elements.showSagCalculations) {
+    elements.showSagCalculations.onchange = () => {
+      UIState.showSagCalculations = Boolean(elements.showSagCalculations.checked);
+      if (updateSagCalculations) {
+        updateSagCalculations();
+      }
+    };
+  }
+
+  if (elements.showClearanceBuffers) {
+    elements.showClearanceBuffers.onchange = () => {
+      UIState.showClearanceBuffers = Boolean(elements.showClearanceBuffers.checked);
+      if (checkClearances) {
+        checkClearances();
+      }
+    };
+  }
 }
 
 export function getUIValues() {
@@ -137,5 +219,6 @@ export function getUIValues() {
     currentHeight: UIState.currentHeight,
     currentTension: UIState.currentTension,
     showGrid: UIState.showGrid,
+    clearanceThreshold: UIState.clearanceThreshold,
   };
 }

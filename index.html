@@ -17,19 +17,258 @@
       position: fixed;
       top: 8px;
       left: 8px;
-      background: rgba(0, 0, 0, 0.55);
+      background: rgba(0, 0, 0, 0.75);
       color: #fff;
-      padding: 6px 10px;
+      padding: 12px 16px;
       font-size: 12px;
       line-height: 1.4;
-      border-radius: 6px;
+      border-radius: 8px;
       user-select: none;
+      max-width: 420px;
+      z-index: 1000;
+    }
+
+    .control-section {
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .control-section:last-of-type {
+      border-bottom: none;
+      margin-bottom: 0;
+    }
+
+    .section-title {
+      font-weight: bold;
+      font-size: 13px;
+      margin-bottom: 6px;
+      color: #73c2fb;
+    }
+
+    .control-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: 11px;
+    }
+
+    .control-group input[type="range"] {
+      margin-top: 2px;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+    }
+
+    .instructions {
+      font-size: 11px;
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .hud-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      margin-bottom: 8px;
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .hud-title {
+      font-weight: bold;
+      font-size: 13px;
+      color: #73c2fb;
+    }
+
+    .hud-collapse-btn {
+      font-size: 16px;
+      font-weight: bold;
+      color: #73c2fb;
+      width: 20px;
+      text-align: center;
+      user-select: none;
+    }
+
+    .hud-header:hover {
+      opacity: 0.8;
+    }
+
+    .hud-content {
+      transition: all 0.3s ease;
+      overflow: hidden;
+    }
+
+    .hud-content.collapsed {
+      height: 0;
+      opacity: 0;
+      margin: 0;
+      padding: 0;
+    }
+
+    .slider-with-value {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 2px;
+    }
+
+    .slider-with-value input[type="range"] {
+      flex: 1;
+      min-width: 80px;
+    }
+
+    .slider-with-value span {
+      font-size: 11px;
+      color: #73c2fb;
+      font-weight: bold;
+      min-width: 35px;
+      text-align: right;
     }
 
     #hud input[type="range"],
     #hud select,
     #hud button {
       vertical-align: middle;
+      cursor: pointer;
+      background: rgba(115, 194, 251, 0.2);
+      border: 1px solid rgba(115, 194, 251, 0.4);
+      color: #fff;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      margin: 1px;
+      transition: all 0.2s ease;
+    }
+
+    /* Improved dropdown styling for better readability */
+    #hud select {
+      background: rgba(40, 40, 40, 0.95);
+      border: 1px solid rgba(115, 194, 251, 0.6);
+      color: #ffffff;
+      font-weight: 500;
+    }
+
+    #hud select:hover {
+      background: rgba(50, 50, 50, 0.98);
+      border-color: rgba(115, 194, 251, 0.8);
+    }
+
+    #hud select:focus {
+      background: rgba(60, 60, 60, 1);
+      border-color: #73c2fb;
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(115, 194, 251, 0.3);
+    }
+
+    /* Style dropdown options for better contrast */
+    #hud select option {
+      background: rgba(40, 40, 40, 1);
+      color: #ffffff;
+      padding: 4px;
+    }
+
+    /* Drag and drop overlay */
+    #dragDropOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+      color: white;
+      font-size: 24px;
+      font-weight: bold;
+      pointer-events: none;
+    }
+
+    #dragDropOverlay.active {
+      display: flex;
+    }
+
+    .drag-drop-icon {
+      font-size: 48px;
+      margin-bottom: 20px;
+    }
+
+    .drag-drop-text {
+      text-align: center;
+      line-height: 1.4;
+    }
+
+    /* Loading overlay */
+    #loadingOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+
+    #loadingOverlay.active {
+      display: flex;
+    }
+
+    .loading-content {
+      text-align: center;
+      background: rgba(40, 40, 40, 0.95);
+      padding: 30px 40px;
+      border-radius: 10px;
+      border: 2px solid #555;
+    }
+
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #333;
+      border-top: 4px solid #fff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+      font-size: 16px;
+      margin-top: 10px;
+    }
+
+    #hud button:hover {
+      background: rgba(115, 194, 251, 0.3);
+      border-color: rgba(115, 194, 251, 0.6);
+    }
+
+    #hud button:active {
+      background: rgba(115, 194, 251, 0.4);
     }
 
     #hud label {
@@ -122,74 +361,247 @@
     .json-value {
       text-align: right;
     }
+
+    #scenariosPanel {
+      position: fixed;
+      top: 8px;
+      right: 8px;
+      background: rgba(0, 0, 0, 0.55);
+      color: #fff;
+      padding: 6px 10px;
+      font-size: 12px;
+      line-height: 1.4;
+      border-radius: 6px;
+      user-select: none;
+      font-family: sans-serif;
+      max-width: 300px;
+    }
+
+    .scenarios-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      padding: 2px 0;
+    }
+
+    .scenarios-header:hover {
+      opacity: 0.8;
+    }
+
+    .scenarios-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      transition: all 0.3s ease;
+    }
+
+    .scenarios-grid.collapsed {
+      height: 0;
+      overflow: hidden;
+      opacity: 0;
+      margin-bottom: 0;
+    }
+
+    .scenario-button {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      padding: 6px 8px;
+      cursor: pointer;
+      font-size: 11px;
+      color: #fff;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      text-align: left;
+    }
+
+    .scenario-button:hover {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.4);
+      transform: translateY(-1px);
+    }
+
+    .scenario-button:active {
+      transform: translateY(0);
+    }
+
+    .scenario-emoji {
+      font-size: 14px;
+      display: inline-block;
+      min-width: 16px;
+    }
+
+    .scenario-text {
+      font-size: 10px;
+      line-height: 1.2;
+    }
   </style>
   <script src="https://unpkg.com/three@0.139.2/build/three.min.js"></script>
   <script src="https://unpkg.com/three@0.139.2/examples/js/controls/OrbitControls.js"></script>
   <script type="module" src="js/config.js"></script>
   <script type="module" src="js/terrain.js"></script>
   <script type="module" src="js/ui.js"></script>
+  <script type="module" src="js/gisImportDialog.js"></script>
   <script type="module" src="js/main.js"></script>
   <script type="module" src="json-view.js"></script>
 </head>
 <body>
   <div id="hud">
-    <div><strong>Left-click</strong>: add pole | <strong>Right-click</strong>: delete pole</div>
-    <label>New pole height: <input id="heightSlider" type="range" min="1" max="40" step="1" value="20" /></label>
-    <span id="heightLabel">20</span> ft
-    &nbsp;&nbsp;|&nbsp;&nbsp;
-    <label>
-      Terrain:
-      <select id="terrainSelect">
-        <option value="flat" selected>Flat</option>
-        <option value="hills">Rolling Hills</option>
-        <option value="hillsTrees">Hills + Trees</option>
-      </select>
-    </label>
-    &nbsp;&nbsp;|&nbsp;&nbsp;
-    <label>
-      Tension:
-      <input id="tensionSlider" type="range" min="0.2" max="5" step="0.1" value="1" />
-    </label>
-    <span id="tensionLabel">1.0 A</span>
-    &nbsp;&nbsp;|&nbsp;&nbsp;
-    <label><input type="checkbox" id="showGridCheck" checked /> Grid</label>
-    &nbsp;&nbsp;|&nbsp;&nbsp;
-    <label>
-      Setting:
-      <select id="settingSelect">
-        <option value="none" selected>None</option>
-        <option value="residential">Residential</option>
-        <option value="commercial">Commercial</option>
-        <option value="urban">Urban</option>
-        <option value="rural">Rural</option>
-      </select>
-    </label>
-    &nbsp;&nbsp;|&nbsp;&nbsp;
-    <label>
-      Environment:
-      <select id="environmentSelect">
-        <option value="none" selected>None</option>
-        <option value="coastal">Coastal</option>
-        <option value="mountain">Mountain</option>
-        <option value="desert">Desert</option>
-        <option value="city">City</option>
-      </select>
-    </label>
-    &nbsp;&nbsp;|&nbsp;&nbsp;
-    <label>
-      Equipment:
-      <select id="equipmentSelect">
-        <option value="distribution" selected>Distribution</option>
-        <option value="subTransmission">Sub Transmission</option>
-        <option value="bulkTransmission">Bulk Transmission</option>
-        <option value="generation">Generation</option>
-      </select>
-    </label>
-    &nbsp;&nbsp;|&nbsp;&nbsp;
-    <button id="downloadJSON">Download</button>
-    <button id="clearScene">Clear Scene</button>
-    <button id="randomScenario">Random Terrain</button>
+    <div class="hud-header" id="hudToggle">
+      <span class="hud-title">🎛️ GridScaper Controls</span>
+      <span class="hud-collapse-btn" id="hudCollapseBtn">−</span>
+    </div>
+    
+    <div class="hud-content" id="hudContent">
+      <div class="instructions"><strong>Left-click</strong>: add pole | <strong>Right-click</strong>: delete pole | <strong>Alt-drag</strong>: resize pole height</div>
+      
+      <!-- Pole Configuration Section -->
+      <div class="control-section">
+        <div class="section-title">🏗️ Pole Configuration</div>
+        <div class="control-row">
+          <label class="control-group">
+            New pole height:
+            <div class="slider-with-value">
+              <input id="heightSlider" type="range" min="1" max="40" step="1" value="20" />
+              <span id="heightLabel">20</span> ft
+            </div>
+          </label>
+          <label class="control-group">
+            Tension:
+            <div class="slider-with-value">
+              <input id="tensionSlider" type="range" min="500" max="5000" step="100" value="2000" />
+              <span id="tensionLabel">2000 lbs</span>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Terrain Section -->
+      <div class="control-section">
+        <div class="section-title">🏔️ Terrain</div>
+        <div class="control-row">
+          <label class="control-group">
+            Terrain:
+            <select id="terrainSelect">
+              <option value="flat" selected>Flat</option>
+              <option value="hills">Rolling Hills</option>
+              <option value="hillsTrees">Hills + Trees</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <!-- Display Options Section -->
+      <div class="control-section">
+        <div class="section-title">👁️ Display Options</div>
+        <div class="control-row">
+          <label class="checkbox-group">
+            <input type="checkbox" id="showGridCheck" checked /> Grid
+          </label>
+          <label class="checkbox-group">
+            <input type="checkbox" id="showPoleHeightLabels" /> Pole Heights
+          </label>
+          <label class="checkbox-group">
+            <input type="checkbox" id="showSagCalculations" /> Sag Calculations
+          </label>
+          <label class="checkbox-group">
+            <input type="checkbox" id="showClearanceBuffers" /> Clearance Buffers
+          </label>
+        </div>
+      </div>
+
+      <!-- Safety & Analysis Section -->
+      <div class="control-section">
+        <div class="section-title">⚠️ Safety & Analysis</div>
+        <div class="control-row">
+          <label class="control-group">
+            Clearance threshold:
+            <div class="slider-with-value">
+              <input id="clearanceThreshold" type="range" min="5" max="50" step="1" value="15" />
+              <span id="clearanceLabel">15</span> ft
+            </div>
+          </label>
+        </div>
+        <div id="clearanceWarning" style="display: none; color: #ff6b6b; font-weight: bold; margin-top: 6px;">
+          ⚠️ CLEARANCE ISSUE: Lines too close to ground surface
+        </div>
+      </div>
+
+      <!-- Actions Section -->
+      <div class="control-section">
+        <div class="section-title">🎮 Actions</div>
+        <div class="control-row">
+          <button id="downloadJSON">📥 Download</button>
+          <button id="importJSON">📤 Import Scene</button>
+          <button id="importGIS">🗺️ Import GIS</button>
+          <button id="importElevation">📈 Elevation Profile</button>
+          <button id="copyLink">🔗 Copy Link</button>
+          <button id="clearScene">🗑️ Clear Scene</button>
+          <button id="randomScenario">🎲 Random Terrain</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="copyLinkToast" style="display: none; position: fixed; bottom: 20px; right: 20px; background: rgba(0,0,0,0.8); color: white; padding: 8px 16px; border-radius: 4px; z-index: 10000;">
+      🔗 Link copied to clipboard!
+    </div>
   </div>
+  
+  <div id="scenariosPanel">
+    <div class="scenarios-header">
+      <span>📋 Quick Scenarios</span>
+      <span id="scenariosToggle" style="margin-left: auto; font-weight: normal;">−</span>
+    </div>
+    <div class="scenarios-grid" id="scenariosContent">
+      <div class="scenario-button" data-url="index.html">
+        <span class="scenario-emoji">🏗️</span>
+        <span class="scenario-text">Open<br>Playground</span>
+      </div>
+      <div class="scenario-button" data-url="?poles-distances=0,20,40&poles-heights=10,15,12&poles-elevations=0,5,2&clearanceThreshold=15">
+        <span class="scenario-emoji">🏠</span>
+        <span class="scenario-text">Basic Line<br>Profile</span>
+      </div>
+      <div class="scenario-button" data-url="?poles-distances=0,25,50&poles-heights=20,25,20&poles-elevations=10,0,10&clearanceThreshold=20">
+        <span class="scenario-emoji">🏔️</span>
+        <span class="scenario-text">Valley<br>Crossing</span>
+      </div>
+      <div class="scenario-button" data-url="?poles-distances=0,30,60,90&poles-heights=15,18,22,16&poles-elevations=5,12,8,3&clearanceThreshold=18">
+        <span class="scenario-emoji">🌊</span>
+        <span class="scenario-text">Rolling<br>Hills</span>
+      </div>
+      <div class="scenario-button" data-url="?poles-distances=0,40,80&poles-heights=35,40,35&poles-elevations=0,15,0&clearanceThreshold=25">
+        <span class="scenario-emoji">⚡</span>
+        <span class="scenario-text">High Voltage<br>Span</span>
+      </div>
+      <div class="scenario-button" data-url="?poles-distances=0,15,30,45,60&poles-heights=12,8,15,10,14&poles-elevations=0,2,5,1,0&clearanceThreshold=12">
+        <span class="scenario-emoji">🏘️</span>
+        <span class="scenario-text">Residential<br>Route</span>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Drag and Drop Overlay -->
+  <div id="dragDropOverlay">
+    <div class="drag-drop-icon">📁</div>
+    <div class="drag-drop-text">
+      Drop GridScaper scene file here<br>
+      <small>(.json files only)</small>
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading scene...</div>
+    </div>
+  </div>
+  
   <canvas id="c"></canvas>
 </body>
 </html>

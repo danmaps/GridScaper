@@ -67,10 +67,19 @@ export function getConductorCurve(options) {
 
   // Calculate horizontal distance between poles
   const d = Math.hypot(poleB.x - poleA.x, poleB.z - poleA.z);
-
-  // Calculate sag based on span length and tension
+  
+  // Calculate height difference between attachment points
+  const heightDiff = Math.abs(crossarmHeightB - crossarmHeightA);
+  
+  // Calculate sag based on span length, tension, and height difference
   // Base sag is BASE_SAG_FACTOR (5%) of span length, reduced by tension factor
-  const sag = Math.max(MIN_SAG, d * BASE_SAG_FACTOR) / tension;
+  // Height difference reduces effective sag (more tension needed to support angled conductor)
+  const baseSag = Math.max(MIN_SAG, d * BASE_SAG_FACTOR) / tension;
+  
+  // Apply height difference factor: more height difference = less sag
+  // This is a simplified model - real catenary math is more complex
+  const heightFactor = 1 / (1 + (heightDiff / d) * 0.5); // Height diff reduces sag
+  const sag = baseSag * heightFactor;
 
   // Calculate direction vector and perpendicular for lateral offset
   const dirX = poleB.x - poleA.x;
