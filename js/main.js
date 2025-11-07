@@ -9,6 +9,47 @@ import { showElevationProfileDialog } from './elevationProfileDialog.js';
 const THREE = window.THREE;
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Update all DOM label styles for dark mode
+  function updateSceneLabelStylesForDarkMode(isDark) {
+    // Update conductor color (goodSpan) for dark mode
+    if (window.materials && window.materials.goodSpan) {
+      window.materials.goodSpan.color = new THREE.Color(isDark ? 0xffffff : 0x000000);
+    }
+    // Update terrain surface color for dark mode
+    if (window.terrain && window.terrain.material) {
+      window.terrain.material.color = new THREE.Color(isDark ? 0x0a1a3a : 0x5ca55c);
+      window.terrain.material.needsUpdate = true;
+    }
+    // Grid labels
+    document.querySelectorAll('.grid-label').forEach(label => {
+      label.style.backgroundColor = isDark ? 'rgba(10,16,20,0.85)' : 'rgba(255,255,255,0.5)';
+      label.style.color = isDark ? '#00ffe7' : 'black';
+      label.style.border = isDark ? '1px solid #00ffe7' : 'none';
+    });
+    // Clearance labels
+    document.querySelectorAll('.clearance-label').forEach(label => {
+      label.style.backgroundColor = isDark ? 'rgba(10,16,20,0.95)' : 'rgba(255,255,255,0.9)';
+      // Use the border color already set (red/green)
+      label.style.color = isDark ? '#00ffe7' : (label.style.borderColor === 'rgb(255, 0, 0)' ? '#ff0000' : '#00ff00');
+    });
+    // Pole height labels
+    document.querySelectorAll('div[style*="position: absolute"]').forEach(label => {
+      if (label.textContent && label.textContent.match(/ft|height/i) && label.style.backgroundColor.includes('rgba(0,0,0')) {
+        label.style.backgroundColor = isDark ? 'rgba(10,16,20,0.85)' : 'rgba(0,0,0,0.7)';
+        label.style.color = isDark ? '#00ffe7' : 'white';
+      }
+    });
+    // Sag labels
+    document.querySelectorAll('div[style*="position: absolute"]').forEach(label => {
+      if (label.textContent && label.textContent.match(/sag/i)) {
+        label.style.backgroundColor = isDark ? 'rgba(10,16,20,0.85)' : 'rgba(0,0,0,0.7)';
+        label.style.color = isDark ? '#ff6b6b' : '#ff6b6b';
+        label.style.border = isDark ? '1px solid #ff6b6b' : '1px solid #ff6b6b';
+      }
+    });
+  }
+  window.updateSceneLabelStylesForDarkMode = updateSceneLabelStylesForDarkMode;
+  const isDarkModeActive = () => document.body.classList.contains('dark-mode');
   // Use imported constants
   const { CLEARANCE, SAMPLES, DRAG_SENS, MINH, MAXH, SIZE, SEG, BASE_H, R } = CONSTANTS;
   const { SNAP } = HELPERS;  // Initialize UI elements early (without event handlers)
@@ -22,6 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   const scene = new THREE.Scene();
+  window.scene = scene;
   scene.background = new THREE.Color(0x87ceeb);
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(40, 40, 40);
@@ -37,6 +79,13 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Get materials from config
   const materials = createMaterials();
+  window.materials = materials;
+  // Sync initial appearance with current dark mode state
+  const darkModeActive = isDarkModeActive();
+  if (darkModeActive) {
+    scene.background = new THREE.Color('#0a1014');
+  }
+  updateSceneLabelStylesForDarkMode(darkModeActive);
   const mPole = materials.pole;
   const mCrossArm = materials.crossArm;
   const mPoleHL = materials.poleHighlight;
@@ -546,7 +595,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Reference UI elements directly from the elements variable we retrieved above
   const slider = elements.slider;
   const hLabel = elements.heightLabel;
-  const terrainSel = elements.terrainSelect;
+  // const terrainSel = elements.terrainSelect;
   const tensionSlider = elements.tensionSlider;
   const tensionLabel = elements.tensionLabel;
   const clearBtn = elements.clearButton;
@@ -556,7 +605,10 @@ document.addEventListener('DOMContentLoaded', () => {
   clearSceneElements();
   trees.clear();
   treeData.length = 0;
-  const terrain = importedBuildTerrain(scene, urlParams, customPoles, elements.terrainSelect, null, SEG, hAt, addGridLines, addDefaultTrees, null);
+  const terrain = importedBuildTerrain(scene, urlParams, customPoles, null, null, SEG, hAt, addGridLines, addDefaultTrees, null);
+  const currentDarkMode = isDarkModeActive();
+  scene.background = currentDarkMode ? new THREE.Color('#0a1014') : new THREE.Color(0x87ceeb);
+  updateSceneLabelStylesForDarkMode(currentDarkMode);
   fitGroundInView(camera, controls, terrain);
   /* ------- terrain-conforming circle creation ------- */
   function createTerrainConformingCircle(centerX, centerZ, radius, segments, scaleFactor = 1.0) {
@@ -1129,10 +1181,16 @@ document.addEventListener('DOMContentLoaded', () => {
   function resetScene() {
     clearSceneElements();
     clearSettingElements();
-    clearGridElements(); // Clean up grid and its DOM labels
 
     // Clean up all DOM labels comprehensively
     clearAllDOMLabels();
+
+    if (UIState.showGrid) {
+      addGridLines(scene, window.terrain);
+      updateSceneLabelStylesForDarkMode(isDarkModeActive());
+    } else {
+      clearGridElements();
+    }
     
     // Clean up pole height labels array
     poleHeightLabels.length = 0;
@@ -1144,17 +1202,10 @@ document.addEventListener('DOMContentLoaded', () => {
       scene.remove(l);
     });
     
-    // Clear terrain
-    if (window.terrain) {
-      if (window.terrain.geometry) window.terrain.geometry.dispose();
-      if (window.terrain.material) window.terrain.material.dispose();
-      scene.remove(window.terrain);
-      window.terrain = null;
-    }
-    
-    // Clear GIS elevation surfaces
-    gisElevationSurface = null;
-    customGround = null;
+    // Do NOT clear terrain surface when clearing scene
+    // Only clear GIS elevation surfaces if needed
+    // gisElevationSurface = null;
+    // customGround = null;
     
     updateGhost();
     birds.length = 0;
@@ -2207,6 +2258,10 @@ document.addEventListener('DOMContentLoaded', () => {
         );
         
         fitGroundInView(camera, controls, terrain);
+        const darkModeSync = isDarkModeActive();
+        scene.background = darkModeSync ? new THREE.Color('#0a1014') : new THREE.Color(0x87ceeb);
+        updateSceneLabelStylesForDarkMode(darkModeSync);
+        toggleGridVisibility(UIState.showGrid);
       }
       
       // Now import poles with correct terrainOffsetZ
@@ -2418,6 +2473,10 @@ document.addEventListener('DOMContentLoaded', () => {
         );
         
         fitGroundInView(camera, controls, terrain);
+        const gisDarkMode = isDarkModeActive();
+        scene.background = gisDarkMode ? new THREE.Color('#0a1014') : new THREE.Color(0x87ceeb);
+        updateSceneLabelStylesForDarkMode(gisDarkMode);
+        toggleGridVisibility(UIState.showGrid);
         
         showLoadingOverlay('Adding poles from GIS coordinates...');
         
@@ -2518,6 +2577,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Store terrain reference for future clearing
         window.terrain = surfaceMesh;
+  const elevationDarkMode = isDarkModeActive();
+  scene.background = elevationDarkMode ? new THREE.Color('#0a1014') : new THREE.Color(0x87ceeb);
+  updateSceneLabelStylesForDarkMode(elevationDarkMode);
         
         // Store terrain reference - pass the mesh directly to fitGroundInView
         fitGroundInView(camera, controls, surfaceMesh);

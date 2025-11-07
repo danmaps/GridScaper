@@ -45,7 +45,7 @@ export function buildTerrain(scene, urlParams, customPoles, terrainSel, environm
 
   addGridLines(scene, terrain);
 
-  if (terrainSel.value === 'hillsTrees') addDefaultTrees(scene, hAt);
+  // If you want trees, call addDefaultTrees directly elsewhere
   if (environmentSel) updateEnvironment(scene, environmentSel);
 
   return terrain;

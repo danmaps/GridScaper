@@ -13,7 +13,7 @@ export const UIState = {
 export const elements = {
   get slider() { return document.getElementById('heightSlider'); },
   get heightLabel() { return document.getElementById('heightLabel'); },
-  get terrainSelect() { return document.getElementById('terrainSelect'); },
+  // get terrainSelect() { return document.getElementById('terrainSelect'); },
   get tensionSlider() { return document.getElementById('tensionSlider'); },
   get tensionLabel() { return document.getElementById('tensionLabel'); },
   get clearButton() { return document.getElementById('clearScene'); },
@@ -107,27 +107,7 @@ export function setupUI(callbacks, dependencies) {
     };
   }
 
-  if (elements.terrainSelect) {
-    elements.terrainSelect.onchange = () => {
-      clearSceneElements();
-      trees.clear();
-      treeData.length = 0;
-      importedBuildTerrain(
-        scene,
-        urlParams,
-        customPoles,
-        elements.terrainSelect,
-        null, // No environment select
-        SEG,
-        hAt,
-        addGridLines,
-        addDefaultTrees,
-        null // No updateEnvironment function
-      );
-      resetScene();
-      updateSceneElements();
-    };
-  }
+  // Removed terrainSelect and its onchange handler
 
 
 
@@ -152,9 +132,7 @@ export function setupUI(callbacks, dependencies) {
     elements.clearButton.onclick = resetScene;
   }
 
-  if (elements.randomButton) {
-    elements.randomButton.onclick = createRandomScenario;
-  }
+  // Removed randomButton handler
 
   if (elements.copyLink) {
     elements.copyLink.onclick = copyScenarioLink;

@@ -4,6 +4,32 @@
   <meta charset="UTF-8" />
   <title>GridScaper</title>
   <style>
+  :root {
+  --primary-bg: rgba(0,0,0,0.75);
+  --panel-bg: #181c1f;
+  --panel-border: #22292f;
+  --accent: #73c2fb;
+  --danger: #ff6b6b;
+  --text: #fff;
+  --input-bg: rgba(115,194,251,0.2);
+  --input-border: rgba(115,194,251,0.4);
+  --button-hover: rgba(115,194,251,0.3);
+  --button-active: rgba(115,194,251,0.4);
+  --section-title: #73c2fb;
+}
+body.dark-mode {
+  --primary-bg: #0a1014;
+  --panel-bg: #10151a;
+  --panel-border: #00ffe7;
+  --accent: #00ffe7;
+  --danger: #ff2d55;
+  --text: #00ffe7;
+  --input-bg: #1a232a;
+  --input-border: #00ffe7;
+  --button-hover: #003b3b;
+  --button-active: #005050;
+  --section-title: #00ffe7;
+}
     html,
     body,
     #c {
@@ -17,11 +43,12 @@
       position: fixed;
       top: 8px;
       left: 8px;
-      background: rgba(0, 0, 0, 0.75);
-      color: #fff;
+      background: var(--primary-bg);
+      color: var(--text);
       padding: 12px 16px;
       font-size: 12px;
       line-height: 1.4;
+      border: 1.5px solid var(--panel-border);
       border-radius: 8px;
       user-select: none;
       max-width: 420px;
@@ -43,7 +70,7 @@
       font-weight: bold;
       font-size: 13px;
       margin-bottom: 6px;
-      color: #73c2fb;
+      color: var(--section-title);
     }
 
     .control-row {
@@ -91,13 +118,14 @@
     .hud-title {
       font-weight: bold;
       font-size: 13px;
-      color: #73c2fb;
+      color: var(--accent);
+      letter-spacing: 2px;
     }
 
     .hud-collapse-btn {
       font-size: 16px;
       font-weight: bold;
-      color: #73c2fb;
+      color: var(--accent);
       width: 20px;
       text-align: center;
       user-select: none;
@@ -133,7 +161,7 @@
 
     .slider-with-value span {
       font-size: 11px;
-      color: #73c2fb;
+      color: var(--accent);
       font-weight: bold;
       min-width: 35px;
       text-align: right;
@@ -144,14 +172,28 @@
     #hud button {
       vertical-align: middle;
       cursor: pointer;
-      background: rgba(115, 194, 251, 0.2);
-      border: 1px solid rgba(115, 194, 251, 0.4);
-      color: #fff;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      color: var(--text);
+      font-family: 'Consolas', 'Menlo', 'Monaco', monospace;
+      letter-spacing: 0.5px;
       padding: 4px 8px;
       border-radius: 4px;
       font-size: 11px;
       margin: 1px;
       transition: all 0.2s ease;
+    }
+
+    #hud button:hover {
+      background: var(--button-hover);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    #hud button:active {
+      background: var(--button-active);
+      border-color: var(--accent);
+      color: var(--danger);
     }
 
     /* Improved dropdown styling for better readability */
@@ -262,15 +304,6 @@
       margin-top: 10px;
     }
 
-    #hud button:hover {
-      background: rgba(115, 194, 251, 0.3);
-      border-color: rgba(115, 194, 251, 0.6);
-    }
-
-    #hud button:active {
-      background: rgba(115, 194, 251, 0.4);
-    }
-
     #hud label {
       margin-right: 4px;
     }
@@ -366,8 +399,8 @@
       position: fixed;
       top: 8px;
       right: 8px;
-      background: rgba(0, 0, 0, 0.55);
-      color: #fff;
+      background: var(--primary-bg, rgba(0, 0, 0, 0.55));
+      color: var(--text, #fff);
       padding: 6px 10px;
       font-size: 12px;
       line-height: 1.4;
@@ -375,6 +408,7 @@
       user-select: none;
       font-family: sans-serif;
       max-width: 300px;
+      border: 1.5px solid var(--panel-border, #22292f);
     }
 
     .scenarios-header {
@@ -385,6 +419,8 @@
       font-weight: bold;
       cursor: pointer;
       padding: 2px 0;
+      color: var(--accent, #73c2fb);
+      border-bottom: 1px solid var(--panel-border, #22292f);
     }
 
     .scenarios-header:hover {
@@ -406,13 +442,13 @@
     }
 
     .scenario-button {
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: var(--panel-bg, rgba(255, 255, 255, 0.1));
+      border: 1px solid var(--panel-border, #22292f);
       border-radius: 4px;
       padding: 6px 8px;
       cursor: pointer;
       font-size: 11px;
-      color: #fff;
+      color: var(--text, #fff);
       transition: all 0.2s ease;
       display: flex;
       align-items: center;
@@ -421,12 +457,16 @@
     }
 
     .scenario-button:hover {
-      background: rgba(255, 255, 255, 0.2);
-      border-color: rgba(255, 255, 255, 0.4);
+      background: var(--button-hover, rgba(255, 255, 255, 0.2));
+      border-color: var(--accent, #73c2fb);
+      color: var(--accent, #73c2fb);
       transform: translateY(-1px);
     }
 
     .scenario-button:active {
+      background: var(--button-active, #005050);
+      border-color: var(--accent, #00ffe7);
+      color: var(--danger, #ff6b6b);
       transform: translateY(0);
     }
 
@@ -434,11 +474,13 @@
       font-size: 14px;
       display: inline-block;
       min-width: 16px;
+      color: var(--accent, #73c2fb);
     }
 
     .scenario-text {
       font-size: 10px;
       line-height: 1.2;
+      color: var(--text, #fff);
     }
   </style>
   <script src="https://unpkg.com/three@0.139.2/build/three.min.js"></script>
@@ -452,10 +494,26 @@
 </head>
 <body>
   <div id="hud">
-    <div class="hud-header" id="hudToggle">
-      <span class="hud-title">🎛️ GridScaper Controls</span>
-      <span class="hud-collapse-btn" id="hudCollapseBtn">−</span>
-    </div>
+  <div class="hud-header" id="hudToggle">
+    <span class="hud-title">🎛️ GridScaper Controls</span>
+    <span style="flex:1"></span>
+    <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;user-select:none;">
+      <input type="checkbox" id="darkModeToggle" style="accent-color:#00ffe7;vertical-align:middle;" />
+      <span style="color:#00ffe7;font-weight:bold;">Dark Mode</span>
+      <script>
+        // Prevent dark mode toggle from collapsing the panel
+        const darkLabel = document.querySelector('label[for="darkModeToggle"], label > #darkModeToggle')?.parentElement;
+        const darkInput = document.getElementById('darkModeToggle');
+        if (darkLabel) {
+          darkLabel.addEventListener('click', e => e.stopPropagation());
+        }
+        if (darkInput) {
+          darkInput.addEventListener('click', e => e.stopPropagation());
+        }
+      </script>
+    </label>
+    <span class="hud-collapse-btn" id="hudCollapseBtn">−</span>
+  </div>
     
     <div class="hud-content" id="hudContent">
       <div class="instructions"><strong>Left-click</strong>: add pole | <strong>Right-click</strong>: delete pole | <strong>Alt-drag</strong>: resize pole height</div>
@@ -477,21 +535,6 @@
               <input id="tensionSlider" type="range" min="500" max="5000" step="100" value="2000" />
               <span id="tensionLabel">2000 lbs</span>
             </div>
-          </label>
-        </div>
-      </div>
-
-      <!-- Terrain Section -->
-      <div class="control-section">
-        <div class="section-title">🏔️ Terrain</div>
-        <div class="control-row">
-          <label class="control-group">
-            Terrain:
-            <select id="terrainSelect">
-              <option value="flat" selected>Flat</option>
-              <option value="hills">Rolling Hills</option>
-              <option value="hillsTrees">Hills + Trees</option>
-            </select>
           </label>
         </div>
       </div>
@@ -542,7 +585,7 @@
           <button id="importElevation">📈 Elevation Profile</button>
           <button id="copyLink">🔗 Copy Link</button>
           <button id="clearScene">🗑️ Clear Scene</button>
-          <button id="randomScenario">🎲 Random Terrain</button>
+          <!-- Removed random terrain button -->
         </div>
       </div>
     </div>
@@ -554,7 +597,7 @@
   
   <div id="scenariosPanel">
     <div class="scenarios-header">
-      <span>📋 Quick Scenarios</span>
+      <span>📋 Scenarios</span>
       <span id="scenariosToggle" style="margin-left: auto; font-weight: normal;">−</span>
     </div>
     <div class="scenarios-grid" id="scenariosContent">
@@ -603,5 +646,30 @@
   </div>
   
   <canvas id="c"></canvas>
+  <script>
+  const darkToggle = document.getElementById('darkModeToggle');
+  const body = document.body;
+  if (localStorage.getItem('gridscaper-darkmode') === '1') {
+    body.classList.add('dark-mode');
+    darkToggle.checked = true;
+  }
+  darkToggle?.addEventListener('change', e => {
+    if (darkToggle.checked) {
+      body.classList.add('dark-mode');
+      localStorage.setItem('gridscaper-darkmode', '1');
+    } else {
+      body.classList.remove('dark-mode');
+      localStorage.setItem('gridscaper-darkmode', '0');
+    }
+    // Optionally, update Three.js background for full effect
+    if (window.THREE && window.scene) {
+      window.scene.background = darkToggle.checked ? new window.THREE.Color('#0a1014') : new window.THREE.Color(0x87ceeb);
+    }
+    // Update 3D scene DOM label styles
+    if (window.updateSceneLabelStylesForDarkMode) {
+      window.updateSceneLabelStylesForDarkMode(darkToggle.checked);
+    }
+  });
+</script>
 </body>
 </html>
