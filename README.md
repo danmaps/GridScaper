@@ -1,6 +1,6 @@
 # GridScaper
 
-🎮 **[Try GridScaper Live](https://danmaps.github.io/GridScaper/)** | 📖 **[Educational Guide](https://danmaps.github.io/GridScaper/ELEVATION_PROFILE_README.md)** | 🗂️ **[GIS Import Features](https://danmaps.github.io/GridScaper/GIS_IMPORT_README.md)**
+🎮 **[Try GridScaper Live](https://danmaps.github.io/GridScaper/)**
 
 ## Overview
 
@@ -17,7 +17,7 @@ GridScaper is a **fun and educational** browser-based tool for learning power li
 
 ***
 
-## ✅ What's New for Vibe‑A‑Thon
+## ✅ What's New
 
 * **Smart Clearance Coach**  
   Dynamically evaluates pole and span positions against simulated safety rules (PASS/WARN/FAIL) and visualizes buffers in real time.  
@@ -95,16 +95,67 @@ Future enhancements could include:
 ## Core Features
 
 * **Interactive Pole Placement**: Add and delete power poles with adjustable heights on the terrain. Poles can be dragged to new positions, and their height can be adjusted after placement.
-* **Terrain Customization**: Select from different terrain types:
-  * Flat
-  * Rolling Hills
-  * Hills + Trees (adds generic trees to the rolling hills terrain)
-  * The terrain automatically adjusts to pole elevations when URL parameters are used.
 * **Adjustable Line Tension**: Modify the tension of the power lines and observe the corresponding sag between poles.
-* **URL Parameterization**: Launch the simulation with predefined configurations for grid dimensions and pole setups.
+* **URL Parameterization**: Launch the simulation with predefined configurations for grid dimensions, terrain, and pole setups.
 * **Data Export**: Download the current scene configuration (poles, spans, terrain, tension) as a JSON file.
 * **Visual Grid Overlay**: Toggle a visual grid on the terrain with coordinate labels that follow the terrain's contour.
 * **Crossarm Orientation**: Crossarms on poles automatically orient themselves based on the direction of the connected power lines.
+
+## ⚔️ Challenge Mode (Budget + Objectives)
+
+Challenge Mode turns GridScaper into a mini planning puzzle: connect power from the green substation cube to the blue customer cube efficiently, safely, and under budget.
+
+### How to Start / Exit
+
+* Start: Click the "Challenge Mode" button. Two immovable buildings (substation + customer) appear at opposite ends of the terrain.
+* Exit / Sandbox: Click "Sandbox Mode" to return to free placement without budget rules.
+
+### Objective
+
+Place poles so the last pole ends within the connection range (15 ft) of the customer building. When in range, the customer cube lights up with a blue emissive glow (powered). Then press "Check Solution" to see success or issues.
+
+### Budget & Costs
+
+* Each pole adds a fixed pole cost.
+* Each conductor span adds cost per foot (including substation→first pole and last pole→customer when powered).
+* The live panel shows: Poles Used, Amount Spent, Remaining Budget (green if OK, red if over).
+* Savings are reported on success (Budget − Spent).
+
+### Span Rules
+
+* Maximum span length enforced: If a prospective pole would exceed the limit, placement is blocked with a clear warning dialog.
+* The ghost pole label displays the prospective span distance (and marks it "too long" if violated).
+
+### Clearance & Safety
+
+All normal clearance checks still run. A span that sags too close to terrain triggers a warning indicator line and counts as a violation in solution checking.
+
+### Win Conditions
+
+"Check Solution" reports:
+
+1. Customer powered (pole within 15 ft)
+2. No span length violations
+3. Budget not exceeded
+4. No clearance violations
+
+
+If all pass you get a success summary (including savings). Otherwise the first failure(s) are listed so you can iterate.
+
+### Undo / Redo Support
+
+Every pole add/remove/drag (height or position) captures a snapshot. Use the Undo / Redo buttons to explore strategies while keeping cost tracking consistent.
+
+### Strategy Tips
+
+* Shorter spans reduce conductor cost but may require more poles (increasing pole cost).
+* Higher tension reduces sag, helping clearances, but doesn’t directly affect cost in the current model.
+* Position poles to approach customer directly to minimize the final jump distance.
+
+### Educational Notes
+
+Costs, thresholds, and connection range are simplified approximations for learning only. They do not represent utility design standards.
+
 
 ## How to Use
 

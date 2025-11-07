@@ -482,6 +482,123 @@ body.dark-mode {
       line-height: 1.2;
       color: var(--text, #fff);
     }
+    
+    /* Challenge Mode Panel */
+    #challengePanel {
+      position: fixed;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--primary-bg);
+      color: var(--text);
+      padding: 12px 20px;
+      font-size: 12px;
+      border: 1.5px solid var(--panel-border);
+      border-radius: 8px;
+      user-select: none;
+      z-index: 1000;
+      display: none;
+      min-width: 600px;
+      max-width: 800px;
+    }
+    
+    #challengePanel.active {
+      display: block;
+    }
+    
+    .challenge-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--panel-border);
+    }
+    
+    .challenge-title {
+      font-weight: bold;
+      font-size: 14px;
+      color: var(--accent);
+      letter-spacing: 1px;
+    }
+    
+    .challenge-content {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    
+    .challenge-objective {
+      flex: 1;
+      min-width: 200px;
+    }
+    
+    .challenge-objective-title {
+      font-size: 11px;
+      opacity: 0.8;
+      margin-bottom: 4px;
+    }
+    
+    .challenge-objective-text {
+      font-size: 13px;
+      font-weight: bold;
+      color: var(--accent);
+    }
+    
+    .challenge-stats {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+    
+    .challenge-stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    
+    .challenge-stat-label {
+      font-size: 10px;
+      opacity: 0.7;
+    }
+    
+    .challenge-stat-value {
+      font-size: 14px;
+      font-weight: bold;
+    }
+    
+    .challenge-stat-value.over-budget {
+      color: var(--danger);
+    }
+    
+    .challenge-stat-value.under-budget {
+      color: #4ade80;
+    }
+    
+    .challenge-actions {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .challenge-marker {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+    
+    .challenge-marker.start {
+      background: #22c55e;
+      box-shadow: 0 0 10px #22c55e;
+    }
+    
+    .challenge-marker.goal {
+      background: #3b82f6;
+      box-shadow: 0 0 10px #3b82f6;
+    }
   </style>
   <script src="https://unpkg.com/three@0.139.2/build/three.min.js"></script>
   <script src="https://unpkg.com/three@0.139.2/examples/js/controls/OrbitControls.js"></script>
@@ -518,6 +635,15 @@ body.dark-mode {
     <div class="hud-content" id="hudContent">
       <div class="instructions"><strong>Left-click</strong>: add pole | <strong>Right-click</strong>: delete pole | <strong>Alt-drag</strong>: resize pole height</div>
       
+      <!-- History Section -->
+      <div class="control-section">
+        <div class="section-title">↩️ History</div>
+        <div class="control-row">
+          <button id="undoButton" title="Undo (Ctrl+Z)" style="opacity: 0.5;">↶ Undo</button>
+          <button id="redoButton" title="Redo (Ctrl+Y)" style="opacity: 0.5;">↷ Redo</button>
+        </div>
+      </div>
+      
       <!-- Pole Configuration Section -->
       <div class="control-section">
         <div class="section-title">🏗️ Pole Configuration</div>
@@ -545,6 +671,9 @@ body.dark-mode {
         <div class="control-row">
           <label class="checkbox-group">
             <input type="checkbox" id="showGridCheck" checked /> Grid
+          </label>
+          <label class="checkbox-group">
+            <input type="checkbox" id="showGridLabelsCheck" /> Grid Labels
           </label>
           <label class="checkbox-group">
             <input type="checkbox" id="showPoleHeightLabels" /> Pole Heights
@@ -586,6 +715,15 @@ body.dark-mode {
           <button id="copyLink">🔗 Copy Link</button>
           <button id="clearScene">🗑️ Clear Scene</button>
           <!-- Removed random terrain button -->
+        </div>
+      </div>
+      
+      <!-- Mode Toggle Section -->
+      <div class="control-section">
+        <div class="section-title">🎯 Mode</div>
+        <div class="control-row">
+          <button id="toggleChallengeMode">🏆 Challenge Mode</button>
+          <button id="sandboxModeButton" style="display:none;">🛠️ Sandbox Mode</button>
         </div>
       </div>
     </div>
@@ -642,6 +780,45 @@ body.dark-mode {
     <div class="loading-content">
       <div class="loading-spinner"></div>
       <div class="loading-text">Loading scene...</div>
+    </div>
+  </div>
+  
+  <!-- Challenge Mode Panel -->
+  <div id="challengePanel">
+    <div class="challenge-header">
+      <div class="challenge-title">🏆 CHALLENGE MODE</div>
+      <button id="exitChallengeMode" style="padding: 4px 8px; font-size: 11px;">Exit Challenge</button>
+    </div>
+    <div class="challenge-content">
+      <div class="challenge-objective">
+        <div class="challenge-objective-title">OBJECTIVE</div>
+        <div class="challenge-objective-text">
+          <span class="challenge-marker start"></span> Connect Substation to Customer 
+          <span class="challenge-marker goal"></span>
+        </div>
+      </div>
+      <div class="challenge-stats">
+        <div class="challenge-stat">
+          <div class="challenge-stat-label">Budget</div>
+          <div class="challenge-stat-value" id="challengeBudget">$50,000</div>
+        </div>
+        <div class="challenge-stat">
+          <div class="challenge-stat-label">Spent</div>
+          <div class="challenge-stat-value" id="challengeSpent">$0</div>
+        </div>
+        <div class="challenge-stat">
+          <div class="challenge-stat-label">Remaining</div>
+          <div class="challenge-stat-value under-budget" id="challengeRemaining">$50,000</div>
+        </div>
+        <div class="challenge-stat">
+          <div class="challenge-stat-label">Poles</div>
+          <div class="challenge-stat-value" id="challengePoles">0</div>
+        </div>
+      </div>
+      <div class="challenge-actions">
+        <button id="checkSolution">✓ Check Solution</button>
+        <button id="resetChallenge">↻ Reset</button>
+      </div>
     </div>
   </div>
   

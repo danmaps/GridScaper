@@ -50,9 +50,146 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   window.updateSceneLabelStylesForDarkMode = updateSceneLabelStylesForDarkMode;
   const isDarkModeActive = () => document.body.classList.contains('dark-mode');
+  
+  // History management for undo/redo
+  const history = {
+    states: [],
+    currentIndex: -1,
+    maxSize: 50,
+    
+    captureState() {
+      // Create a deep copy of current poles state
+      const state = poles.map(p => ({
+        x: p.x,
+        z: p.z,
+        h: p.h,
+        base: p.base
+      }));
+      
+      // Remove any future states if we're not at the end
+      if (this.currentIndex < this.states.length - 1) {
+        this.states = this.states.slice(0, this.currentIndex + 1);
+      }
+      
+      // Add new state
+      this.states.push(state);
+      
+      // Limit history size
+      if (this.states.length > this.maxSize) {
+        this.states.shift();
+      } else {
+        this.currentIndex++;
+      }
+      
+      updateUndoRedoButtons();
+    },
+    
+    canUndo() {
+      return this.currentIndex > 0;
+    },
+    
+    canRedo() {
+      return this.currentIndex < this.states.length - 1;
+    },
+    
+    undo() {
+      if (!this.canUndo()) return;
+      
+      this.currentIndex--;
+      this.restoreState(this.states[this.currentIndex]);
+      updateUndoRedoButtons();
+    },
+    
+    redo() {
+      if (!this.canRedo()) return;
+      
+      this.currentIndex++;
+      this.restoreState(this.states[this.currentIndex]);
+      updateUndoRedoButtons();
+    },
+    
+    restoreState(state) {
+      // Clear current poles without capturing state
+      poles.forEach(p => scene.remove(p.obj));
+      poles.length = 0;
+      
+      // Restore poles from state
+      state.forEach(poleData => {
+        const mesh = new THREE.Mesh(poleGeo, mPole);
+        mesh.scale.y = poleData.h / BASE_H;
+        mesh.position.set(poleData.x, poleData.base + poleData.h / 2, poleData.z + terrainOffsetZ);
+        mesh.userData.pole = true;
+
+        const crossArm = new THREE.Mesh(crossArmGeo, mCrossArm);
+        crossArm.position.y = 5;
+        mesh.add(crossArm);
+
+        scene.add(mesh);
+        poles.push({ 
+          x: poleData.x, 
+          z: poleData.z, 
+          h: poleData.h, 
+          base: poleData.base, 
+          obj: mesh 
+        });
+      });
+      
+      rebuild();
+      updateCrossarmOrientations();
+      updateLastPoleIndicator();
+    },
+    
+    clear() {
+      this.states = [];
+      this.currentIndex = -1;
+      updateUndoRedoButtons();
+    }
+  };
+  
+  function updateUndoRedoButtons() {
+    const undoBtn = document.getElementById('undoButton');
+    const redoBtn = document.getElementById('redoButton');
+    
+    if (undoBtn) {
+      undoBtn.disabled = !history.canUndo();
+      undoBtn.style.opacity = history.canUndo() ? '1' : '0.5';
+    }
+    
+    if (redoBtn) {
+      redoBtn.disabled = !history.canRedo();
+      redoBtn.style.opacity = history.canRedo() ? '1' : '0.5';
+    }
+  }
+  
   // Use imported constants
   const { CLEARANCE, SAMPLES, DRAG_SENS, MINH, MAXH, SIZE, SEG, BASE_H, R } = CONSTANTS;
-  const { SNAP } = HELPERS;  // Initialize UI elements early (without event handlers)
+  const { SNAP } = HELPERS;  
+  
+  // Challenge mode state
+  const challengeState = {
+    active: false,
+    substationBuilding: null,
+    customerBuilding: null,
+    substationMesh: null,
+    customerMesh: null,
+    isPowered: false
+  };
+
+  // Phase 1: Introduce explicit spans array (sequential adjacency only for now)
+  // Each span entry will store references to pole objects (not meshes directly) for later graph-based operations.
+  // Primary poles collection (was implicit previously, now explicitly declared before spans usage)
+  const poles = [];
+  const spans = [];
+
+  function updateSequentialSpans() {
+    // Clear and rebuild spans based on current pole ordering.
+    spans.length = 0;
+    for (let i = 1; i < poles.length; i++) {
+      spans.push({ a: poles[i - 1], b: poles[i], type: 'pole' });
+    }
+  }
+  
+  // Initialize UI elements early (without event handlers)
   initUI();
 
   // We already have elements imported at the top of the file via the import statement
@@ -76,54 +213,21 @@ document.addEventListener('DOMContentLoaded', () => {
   /* ------- materials ------- */
   // Get geometries from config
   const { pole: poleGeo, crossArm: crossArmGeo } = createGeometries();
-  
-  // Get materials from config
+  // Materials reference (previously mPole referenced before created)
   const materials = createMaterials();
   window.materials = materials;
-  // Sync initial appearance with current dark mode state
-  const darkModeActive = isDarkModeActive();
-  if (darkModeActive) {
-    scene.background = new THREE.Color('#0a1014');
-  }
-  updateSceneLabelStylesForDarkMode(darkModeActive);
   const mPole = materials.pole;
   const mCrossArm = materials.crossArm;
   const mPoleHL = materials.poleHighlight;
   const mGood = materials.goodSpan;
-  const mBad = materials.badSpan;
-  const mGhost = materials.ghost;
-  const mTreeHL = materials.treeHighlight;
-  const mGrid = materials.grid;
-  const mBird = materials.bird;
-    // Last pole indicator material (semitransparent with glow effect)
-  const mLastPoleIndicator = new THREE.LineBasicMaterial({ 
-    color: 0x3498db, 
-    transparent: true, 
-    opacity: 0.7,
-    linewidth: 2
-  });
+  const mBird = materials.bird; // Bird material
 
-  /* ------- data stores ------- */  
-  const poles = []; // {x,z,h,base,obj}
-  const poleHeightLabels = []; // Array to store label objects for pole heights
-  const sagCalculationObjects = []; // Array to store sag visualization objects
-  const trees = new THREE.Group();
-  scene.add(trees);
-  const treeData = []; // {x,z,yTop,ref}
-  // terrainOffsetZ is imported from terrain.js
-  const ray = new THREE.Raycaster();
-  const mouse = new THREE.Vector2();  
-  
+  // Birds collection (re-added after refactor)
   const birds = [];
-  let hoverPt = null, hoverPole = null, hoverTree = null;
-  let ghost = new THREE.Mesh(poleGeo, mGhost);
-  ghost.visible = false;
-  scene.add(ghost);
-    // Create terrain-conforming lines for the last pole indicator (double circle for better visibility)
-  let lastPoleIndicator = new THREE.Line(new THREE.BufferGeometry(), mLastPoleIndicator);
-  lastPoleIndicator.visible = false;
-  scene.add(lastPoleIndicator);
-  
+
+  // Declare mouse and ray BEFORE any picking helpers use them
+  const mouse = new THREE.Vector2();
+  const ray = new THREE.Raycaster();
   // Create a second, inner indicator circle
   const mLastPoleInnerIndicator = new THREE.LineBasicMaterial({ 
     color: 0x73c2fb, 
@@ -351,6 +455,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     scene.add(gridGroup);
+    // After creating grid, ensure label visibility matches UI state
+    if (typeof UIState !== 'undefined') {
+      toggleGridLabels(UIState.showGridLabels);
+    }
   }
 
   function toggleGridVisibility(visible) {
@@ -358,47 +466,38 @@ document.addEventListener('DOMContentLoaded', () => {
       g.visible = visible;
       
       if (g.userData.labels) {
+        // If grid lines are hidden, always hide labels regardless of label toggle state
         g.userData.labels.forEach(label => {
-          label.element.style.display = visible ? 'block' : 'none';
+          label.element.style.display = visible && UIState.showGridLabels ? 'block' : 'none';
         });
       }
     });
   }
 
+  // Separate label visibility toggle
+  function toggleGridLabels(visible) {
+    scene.children.filter(o => o.userData.grid).forEach(g => {
+      if (!g.userData.labels) return;
+      // Only show labels if grid itself is visible
+      g.userData.labels.forEach(label => {
+        label.element.style.display = (g.visible && visible) ? 'block' : 'none';
+      });
+    });
+  }
+
+  // Utility to clear clearance indicators/labels
+  function clearClearanceIndicators() {
+    scene.children.filter(o => o.userData.clearanceIndicator || o.userData.clearanceBuffer).forEach(indicator => {
+      scene.remove(indicator);
+      if (indicator.geometry) indicator.geometry.dispose();
+      if (indicator.material) indicator.material.dispose();
+    });
+    document.querySelectorAll('.clearance-label').forEach(label => label.remove());
+  }
+
     // The buildTerrain function has been moved to terrain.js and is imported as importedBuildTerrain
   // fitGroundInView is imported from terrain.js
 
-  function addDefaultTrees(scene, hAt) {
-    const trunkG = new THREE.CylinderGeometry(0.15, 0.15, 1, 6);
-    const folG = new THREE.ConeGeometry(0.75, 2, 8);
-    const trunkM = new THREE.MeshStandardMaterial({color: 0x8b5a2b});
-    const folM = new THREE.MeshStandardMaterial({color: 0x2e8b57});
-    const cluster = 20, radius = 6;
-    for(let cx = -SIZE/2; cx <= SIZE/2; cx += cluster) {
-      for(let cz = -SIZE/2; cz <= SIZE/2; cz += cluster) { 
-        if(Math.random() < 0.35) {
-          const n = THREE.MathUtils.randInt(6, 15);
-          for(let i = 0; i < n; i++) {
-            const ang = Math.random() * Math.PI * 2, r = Math.random() * radius;
-            const x = cx + Math.cos(ang) * r, z = cz + Math.sin(ang) * r, y = hAt(x, z);
-            const s = THREE.MathUtils.randFloat(0.8, 1.6);
-            const trunk = new THREE.Mesh(trunkG, trunkM);
-            trunk.scale.y = s;
-            trunk.position.set(x, y + s * 0.5, z);
-            const fol = new THREE.Mesh(folG, folM);
-            fol.scale.setScalar(s);
-            fol.position.set(x, y + s * 1.5, z);
-            const t = new THREE.Group();
-            t.add(trunk);
-            t.add(fol);
-            t.userData.tree = true;
-            trees.add(t);
-            treeData.push({x, z, yTop: y + s * 1.5, ref: t});
-          }
-        }
-      }
-    }
-  }
 
   function clearSceneElements() {
     scene.children.filter(o => o.userData.environmentElement).forEach(obj => {
@@ -556,6 +655,325 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
+  /* ------- Challenge Mode Functions ------- */
+  
+  function createBuilding(position, size, color, emissiveColor) {
+    const geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+    const material = new THREE.MeshStandardMaterial({ 
+      color: color,
+      emissive: emissiveColor,
+      emissiveIntensity: 0.3,
+      metalness: 0.3,
+      roughness: 0.7
+    });
+    const building = new THREE.Mesh(geometry, material);
+    building.position.copy(position);
+    building.position.y += size.y / 2; // Position on ground
+    building.userData.challengeBuilding = true;
+    building.userData.immovable = true;
+    return building;
+  }
+  
+  function enterChallengeMode() {
+    if (challengeState.active) return;
+    
+    // Remove clearance lines/labels when switching modes
+    clearClearanceIndicators();
+
+    // Clear existing poles
+    resetScene();
+    
+    // Determine terrain Z extents for placement
+    let minZ, maxZ;
+    if (window.terrain && window.terrain.geometry && window.terrain.geometry.parameters) {
+      const depth = window.terrain.geometry.parameters.height;
+      const terrainPosZ = window.terrain.position.z;
+      minZ = -depth / 2 + terrainPosZ;
+      maxZ = depth / 2 + terrainPosZ;
+    } else {
+      // Fallback to SIZE constant if terrain not yet built
+      minZ = -SIZE / 2;
+      maxZ = SIZE / 2;
+    }
+    // Building depth margins so cubes sit fully on surface
+    const substationSize = { x: 8, y: 12, z: 8 };
+    const customerSize = { x: 6, y: 8, z: 6 };
+    const substationMargin = substationSize.z / 2 + 1;
+    const customerMargin = customerSize.z / 2 + 1;
+    const substationZ = minZ + substationMargin;
+    const customerZ = maxZ - customerMargin;
+    const substationBase = hAt(0, substationZ + terrainOffsetZ);
+    const customerBase = hAt(0, customerZ + terrainOffsetZ);
+    
+    // Create substation building (green, larger)
+    challengeState.substationMesh = createBuilding(
+      new THREE.Vector3(0, substationBase, substationZ + terrainOffsetZ),
+      substationSize,
+      0x059669, // Dark green
+      0x10b981  // Emissive green
+    );
+    scene.add(challengeState.substationMesh);
+    
+    // Store substation data
+    challengeState.substationBuilding = {
+      x: 0,
+      z: substationZ,
+      h: 12,
+      base: substationBase,
+      obj: challengeState.substationMesh
+    };
+    
+    // Create customer building (blue, smaller - initially dark)
+    challengeState.customerMesh = createBuilding(
+      new THREE.Vector3(0, customerBase, customerZ + terrainOffsetZ),
+      customerSize,
+      0x1e3a8a, // Dark blue
+      0x000000  // No emissive (unpowered)
+    );
+    scene.add(challengeState.customerMesh);
+    
+    // Store customer data
+    challengeState.customerBuilding = {
+      x: 0,
+      z: customerZ,
+      h: 8,
+      base: customerBase,
+      obj: challengeState.customerMesh
+    };
+    
+    // Activate challenge mode
+    challengeState.active = true;
+    challengeState.isPowered = false;
+    UIState.challengeMode = true;
+    UIState.challengeSpent = 0;
+    
+    // Show challenge panel
+    if (elements.challengePanel) {
+      elements.challengePanel.classList.add('active');
+    }
+    // Toggle mode buttons visibility
+    const challengeBtn = document.getElementById('toggleChallengeMode');
+    const sandboxBtn = document.getElementById('sandboxModeButton');
+    if (challengeBtn) challengeBtn.style.display = 'none';
+    if (sandboxBtn) sandboxBtn.style.display = 'inline-block';
+    
+    // Update UI
+    updateChallengeStats();
+    
+    // Clear history and capture initial state
+    history.clear();
+    history.captureState();
+  }
+  
+  function exitChallengeMode() {
+    if (!challengeState.active) return;
+    
+    // Remove clearance lines/labels when exiting challenge mode
+    clearClearanceIndicators();
+
+    // Remove buildings
+    if (challengeState.substationMesh) {
+      scene.remove(challengeState.substationMesh);
+      challengeState.substationMesh = null;
+    }
+    if (challengeState.customerMesh) {
+      scene.remove(challengeState.customerMesh);
+      challengeState.customerMesh = null;
+    }
+    
+    // Deactivate challenge mode
+    challengeState.active = false;
+    challengeState.substationBuilding = null;
+    challengeState.customerBuilding = null;
+    challengeState.isPowered = false;
+    UIState.challengeMode = false;
+    
+    // Hide challenge panel
+    if (elements.challengePanel) {
+      elements.challengePanel.classList.remove('active');
+    }
+    // Toggle mode buttons visibility
+    const challengeBtn = document.getElementById('toggleChallengeMode');
+    const sandboxBtn = document.getElementById('sandboxModeButton');
+    if (challengeBtn) challengeBtn.style.display = 'inline-block';
+    if (sandboxBtn) sandboxBtn.style.display = 'none';
+    
+    // Clear scene
+    resetScene();
+  }
+  
+  function checkIfCustomerPowered() {
+    if (!challengeState.active || poles.length === 0) {
+      if (challengeState.isPowered) {
+        // Turn off customer building
+        challengeState.customerMesh.material.emissive.setHex(0x000000);
+        challengeState.customerMesh.material.emissiveIntensity = 0;
+        challengeState.isPowered = false;
+      }
+      return false;
+    }
+    
+    // Check if last pole is close enough to customer building
+    const lastPole = poles[poles.length - 1];
+    const dx = lastPole.x - challengeState.customerBuilding.x;
+    const dz = lastPole.z - challengeState.customerBuilding.z;
+    const distance = Math.sqrt(dx * dx + dz * dz);
+    
+    // If within connection range (e.g., 15 feet)
+    const isPowered = distance <= 15;
+    
+    if (isPowered && !challengeState.isPowered) {
+      // Light up the customer building!
+      challengeState.customerMesh.material.emissive.setHex(0x3b82f6); // Bright blue
+      challengeState.customerMesh.material.emissiveIntensity = 0.8;
+      challengeState.isPowered = true;
+    } else if (!isPowered && challengeState.isPowered) {
+      // Turn off
+      challengeState.customerMesh.material.emissive.setHex(0x000000);
+      challengeState.customerMesh.material.emissiveIntensity = 0;
+      challengeState.isPowered = false;
+    }
+    
+    return isPowered;
+  }
+  
+  function updateChallengeStats() {
+    if (!challengeState.active) return;
+    
+    // Calculate costs
+    const poleCount = poles.length;
+    const poleCost = poleCount * UIState.costPerPole;
+    
+    // Calculate conductor length
+    let conductorLength = 0;
+    for (let i = 1; i < poles.length; i++) {
+      const p1 = poles[i-1];
+      const p2 = poles[i];
+      const dx = p2.x - p1.x;
+      const dz = p2.z - p1.z;
+      const distance = Math.sqrt(dx * dx + dz * dz);
+      conductorLength += distance;
+    }
+    
+    // Add cost for connection to substation (first pole)
+    if (poles.length > 0) {
+      const firstPole = poles[0];
+      const dx = firstPole.x - challengeState.substationBuilding.x;
+      const dz = firstPole.z - challengeState.substationBuilding.z;
+      const substationDistance = Math.sqrt(dx * dx + dz * dz);
+      conductorLength += substationDistance;
+    }
+    
+    // Add cost for connection to customer (if powered)
+    if (challengeState.isPowered && poles.length > 0) {
+      const lastPole = poles[poles.length - 1];
+      const dx = lastPole.x - challengeState.customerBuilding.x;
+      const dz = lastPole.z - challengeState.customerBuilding.z;
+      const customerDistance = Math.sqrt(dx * dx + dz * dz);
+      conductorLength += customerDistance;
+    }
+    
+    const conductorCost = conductorLength * UIState.costPerFoot;
+    
+    const totalSpent = poleCost + conductorCost;
+    const remaining = UIState.challengeBudget - totalSpent;
+    
+    UIState.challengeSpent = totalSpent;
+    
+    // Update UI
+    if (elements.challengeSpent) {
+      elements.challengeSpent.textContent = `$${Math.round(totalSpent).toLocaleString()}`;
+    }
+    if (elements.challengeRemaining) {
+      elements.challengeRemaining.textContent = `$${Math.round(remaining).toLocaleString()}`;
+      elements.challengeRemaining.className = 'challenge-stat-value ' + (remaining >= 0 ? 'under-budget' : 'over-budget');
+    }
+    if (elements.challengePoles) {
+      elements.challengePoles.textContent = poleCount;
+    }
+    
+    // Check if customer is powered
+    checkIfCustomerPowered();
+  }
+  
+  function checkChallengeSolution() {
+    if (!challengeState.active) return;
+    
+    const issues = [];
+    
+    // Check if customer is powered
+    if (!challengeState.isPowered) {
+      issues.push('❌ Customer is not powered! Place a pole within 15 feet of the customer building.');
+    }
+    
+    // Check if there are poles
+    if (poles.length === 0) {
+      issues.push('❌ No poles placed! You need to connect the substation to the customer.');
+    }
+    
+    // Check span lengths
+    let hasSpanViolation = false;
+    
+    // Check first pole distance from substation
+    if (poles.length > 0) {
+      const firstPole = poles[0];
+      const dx = firstPole.x - challengeState.substationBuilding.x;
+      const dz = firstPole.z - challengeState.substationBuilding.z;
+      const distance = Math.sqrt(dx * dx + dz * dz);
+      if (distance > UIState.maxSpanLength) {
+        issues.push(`❌ First pole is too far from substation (${Math.round(distance)}ft > ${UIState.maxSpanLength}ft max)`);
+        hasSpanViolation = true;
+      }
+    }
+    
+    // Check distances between poles
+    for (let i = 1; i < poles.length; i++) {
+      const p1 = poles[i-1];
+      const p2 = poles[i];
+      const dx = p2.x - p1.x;
+      const dz = p2.z - p1.z;
+      const distance = Math.sqrt(dx * dx + dz * dz);
+      
+      if (distance > UIState.maxSpanLength) {
+        issues.push(`❌ Span ${i} is too long (${Math.round(distance)}ft > ${UIState.maxSpanLength}ft max)`);
+        hasSpanViolation = true;
+        break; // Only report first violation
+      }
+    }
+    
+    // Check budget
+    if (UIState.challengeSpent > UIState.challengeBudget) {
+      const overBudget = UIState.challengeSpent - UIState.challengeBudget;
+      issues.push(`❌ Over budget by $${Math.round(overBudget).toLocaleString()}!`);
+    }
+    
+    // Check clearances
+    const clearanceOK = checkClearances();
+    if (!clearanceOK) {
+      issues.push('❌ Clearance violations detected! Lines are too close to the ground.');
+    }
+    
+    // Show results
+    if (issues.length === 0) {
+      const savings = UIState.challengeBudget - UIState.challengeSpent;
+      alert(`🎉 SUCCESS!\n\nYou powered the customer!\n\n` +
+            `Budget: $${UIState.challengeBudget.toLocaleString()}\n` +
+            `Spent: $${Math.round(UIState.challengeSpent).toLocaleString()}\n` +
+            `Savings: $${Math.round(savings).toLocaleString()}\n` +
+            `Poles used: ${poles.length}\n\n` +
+            `⚡ The customer has power!`);
+    } else {
+      alert(`Solution Issues:\n\n${issues.join('\n')}\n\nKeep trying!`);
+    }
+  }
+  
+  function resetChallengeLevel() {
+    if (!challengeState.active) return;
+    
+    exitChallengeMode();
+    setTimeout(() => enterChallengeMode(), 50);
+  }
+
   /* ------- UI initialization ------- */
   // Set up UI with callbacks and dependencies
   setupUI(
@@ -567,6 +985,7 @@ document.addEventListener('DOMContentLoaded', () => {
       updateSceneElements,
       rebuild,
       toggleGridVisibility,
+  toggleGridLabels,
       createRandomScenario,
       checkClearances,
       updatePoleHeightLabels,
@@ -575,19 +994,22 @@ document.addEventListener('DOMContentLoaded', () => {
       exportScene,
       handleFileImport,
       handleGISImport,
-      handleElevationProfileImport
+      handleElevationProfileImport,
+      undoHistory: () => history.undo(),
+      redoHistory: () => history.redo(),
+      enterChallengeMode,
+      exitChallengeMode,
+      checkChallengeSolution,
+      resetChallengeLevel
     },
     // Dependencies
     {
       scene,
-      trees,
-      treeData,
       urlParams,
       customPoles, 
       SEG,
       hAt,
       addGridLines,
-      addDefaultTrees,
       importedBuildTerrain
     }
   );
@@ -603,9 +1025,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Use the imported buildTerrain function from terrain.js
   clearSceneElements();
-  trees.clear();
-  treeData.length = 0;
-  const terrain = importedBuildTerrain(scene, urlParams, customPoles, null, null, SEG, hAt, addGridLines, addDefaultTrees, null);
+  const terrain = importedBuildTerrain(scene, urlParams, customPoles, null, null, SEG, hAt, addGridLines, null, null);
   const currentDarkMode = isDarkModeActive();
   scene.background = currentDarkMode ? new THREE.Color('#0a1014') : new THREE.Color(0x87ceeb);
   updateSceneLabelStylesForDarkMode(currentDarkMode);
@@ -787,8 +1207,8 @@ document.addEventListener('DOMContentLoaded', () => {
       spanGroup.forEach(span => {
         const positions = span.geometry.attributes.position;
         
-        // Check each point along the span (sample every few points for performance)
-        for (let i = 0; i < positions.count; i += 3) { // Sample every 3rd point
+        // Check each point along the span (check all points for accuracy)
+        for (let i = 0; i < positions.count; i++) {
           const x = positions.getX(i);
           const y = positions.getY(i);
           const z = positions.getZ(i);
@@ -797,13 +1217,11 @@ document.addEventListener('DOMContentLoaded', () => {
           const groundHeight = hAt(x, z);
           const clearanceToGround = y - groundHeight;
           
-          if (clearanceToGround < threshold && clearanceToGround < minClearance) {
+          if (clearanceToGround < minClearance) {
             minClearance = clearanceToGround;
             violationPoint = { x, y, z, groundHeight };
             violationType = 'ground';
           }
-          
-
         }
       });
       
@@ -819,27 +1237,32 @@ document.addEventListener('DOMContentLoaded', () => {
         hasIssues = true;
         
         if (violationType === 'ground') {
-          // Find the lowest point on the center conductor (where sag is maximum)
-          let lowestCenterPoint = centerConductorPoints[0];
-          let lowestY = centerConductorPoints[0].y;
+          // Find the point with actual minimum clearance (not just lowest conductor point)
+          // This is important for sloped terrain where min clearance may not be at the sag point
+          let minClearancePoint = null;
+          let minClearanceValue = Infinity;
           
           centerConductorPoints.forEach(point => {
-            if (point.y < lowestY) {
-              lowestY = point.y;
-              lowestCenterPoint = point;
+            const groundHeight = hAt(point.x, point.z);
+            const clearance = point.y - groundHeight;
+            
+            if (clearance < minClearanceValue) {
+              minClearanceValue = clearance;
+              minClearancePoint = point;
             }
           });
           
-          // Create simple line indicator at the lowest point of the center conductor
-          const groundHeight = hAt(lowestCenterPoint.x, lowestCenterPoint.z);
-          const groundPoint = { x: lowestCenterPoint.x, y: groundHeight, z: lowestCenterPoint.z };
-          const actualClearance = lowestCenterPoint.y - groundHeight;
-          
-          const indicator = createSimpleClearanceLine(lowestCenterPoint, groundPoint, actualClearance, true);
-          clearanceIndicators.push({
-            label: indicator.label,
-            worldPosition: indicator.worldPosition
-          });
+          // Only show warning line if clearance is actually below threshold
+          if (minClearancePoint && minClearanceValue < threshold) {
+            const groundHeight = hAt(minClearancePoint.x, minClearancePoint.z);
+            const groundPoint = { x: minClearancePoint.x, y: groundHeight, z: minClearancePoint.z };
+            
+            const indicator = createSimpleClearanceLine(minClearancePoint, groundPoint, minClearanceValue, true);
+            clearanceIndicators.push({
+              label: indicator.label,
+              worldPosition: indicator.worldPosition
+            });
+          }
         }
       }
     });
@@ -884,15 +1307,70 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function rebuild() {
+    // Remove existing conductor span meshes
     const oldSpans = scene.children.filter(o => o.userData.span);
-    scene.children.filter(o => o.userData.span).forEach(l => { l.geometry.dispose(); scene.remove(l); });
+    oldSpans.forEach(l => { l.geometry.dispose(); scene.remove(l); });
+    // Clear previous clearance indicators so we don't accumulate duplicates
+    clearClearanceIndicators();
+
+    // Early exit when no poles (still update stats/emissive state)
+    if (poles.length === 0) {
+      if (challengeState.active) updateChallengeStats();
+      updateLastPoleIndicator();
+      return;
+    }
 
     const initialLoad = !window.spansInitialized;
 
-    for (let i = 1; i < poles.length; i++) {
-      drawSpan(poles[i-1], poles[i]);
+    // Sync spans array to current ordering (Phase 1 sequential)
+    updateSequentialSpans();
+
+    // Challenge: span from substation to first pole
+    if (challengeState.active && challengeState.substationBuilding) {
+      const substationPoint = {
+        x: challengeState.substationBuilding.x,
+        z: challengeState.substationBuilding.z,
+        h: challengeState.substationBuilding.h,
+        base: challengeState.substationBuilding.base
+      };
+      drawSpan(substationPoint, poles[0]);
     }
 
+    // Draw all sequential spans
+    spans.forEach(s => drawSpan(s.a, s.b));
+
+    // Challenge: connection from last pole to customer if within range
+    if (challengeState.active && challengeState.customerBuilding) {
+      const connectionRange = 15; // ft
+      const lastPole = poles[poles.length - 1];
+      const dx = lastPole.x - challengeState.customerBuilding.x;
+      const dz = lastPole.z - challengeState.customerBuilding.z;
+      const distance = Math.sqrt(dx * dx + dz * dz);
+      const shouldPower = distance <= connectionRange;
+
+      if (shouldPower) {
+        const customerPoint = {
+          x: challengeState.customerBuilding.x,
+          z: challengeState.customerBuilding.z,
+          h: challengeState.customerBuilding.h,
+          base: challengeState.customerBuilding.base
+        };
+        drawSpan(lastPole, customerPoint);
+      }
+
+      // Update emissive only on state change
+      if (shouldPower && !challengeState.isPowered) {
+        challengeState.customerMesh.material.emissive.setHex(0x3b82f6);
+        challengeState.customerMesh.material.emissiveIntensity = 0.8;
+        challengeState.isPowered = true;
+      } else if (!shouldPower && challengeState.isPowered) {
+        challengeState.customerMesh.material.emissive.setHex(0x000000);
+        challengeState.customerMesh.material.emissiveIntensity = 0;
+        challengeState.isPowered = false;
+      }
+    }
+
+    // Initialize birds once spans first appear, or if spans removed/readded
     if (initialLoad) {
       initBirds();
       window.spansInitialized = true;
@@ -903,13 +1381,40 @@ document.addEventListener('DOMContentLoaded', () => {
     updateLastPoleIndicator();
     updatePoleHeightLabels();
     updateSagCalculations();
-    
-    // Check clearances after rebuilding spans
     checkClearances();
+    if (challengeState.active) updateChallengeStats();
   }
 
   function addPole(x, z, h) {
     if (poles.some(p => p.x === x && p.z === z)) return;
+
+    // In challenge mode, check span length limits
+    if (challengeState.active && UIState.maxSpanLength) {
+      let checkPoint = null;
+      
+      // If there are poles, check distance to last pole
+      if (poles.length > 0) {
+        const lastPole = poles[poles.length - 1];
+        checkPoint = { x: lastPole.x, z: lastPole.z };
+      } else {
+        // No poles yet - check distance to substation
+        checkPoint = { 
+          x: challengeState.substationBuilding.x, 
+          z: challengeState.substationBuilding.z 
+        };
+      }
+      
+      if (checkPoint) {
+        const dx = x - checkPoint.x;
+        const dz = z - checkPoint.z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+        
+        if (distance > UIState.maxSpanLength) {
+          alert(`Cannot place pole here!\n\nSpan length: ${Math.round(distance)}ft\nMax allowed: ${UIState.maxSpanLength}ft\n\nMove closer to the previous pole.`);
+          return;
+        }
+      }
+    }
 
     const base = hAt(x, z + terrainOffsetZ);
     const mesh = new THREE.Mesh(poleGeo, mPole);
@@ -926,6 +1431,14 @@ document.addEventListener('DOMContentLoaded', () => {
     rebuild();
     updateCrossarmOrientations();
     updateLastPoleIndicator(); // Update the last pole indicator
+    
+    // Update challenge stats if in challenge mode
+    if (challengeState.active) {
+      updateChallengeStats();
+    }
+    
+    // Capture state for undo/redo
+    history.captureState();
   }
 
   function removePole(obj){ 
@@ -936,6 +1449,14 @@ document.addEventListener('DOMContentLoaded', () => {
       rebuild();
       updateCrossarmOrientations();
       updateLastPoleIndicator(); // Update the last pole indicator
+      
+      // Update challenge stats if in challenge mode
+      if (challengeState.active) {
+        updateChallengeStats();
+      }
+      
+      // Capture state for undo/redo
+      history.captureState();
     }
   }
 
@@ -986,16 +1507,13 @@ document.addEventListener('DOMContentLoaded', () => {
   
   const poleMeshes = () => poles.map(p => p.obj);
   
-  function setTreeHL(t, on){
-    t.traverse(m => {
-      if(m.isMesh)
-        m.material = on ? mTreeHL : (m.geometry.type === 'CylinderGeometry' ? 
-          new THREE.MeshStandardMaterial({color: 0x8b5a2b}) : 
-          new THREE.MeshStandardMaterial({color: 0x2e8b57}));
-    });
-  }
 
-  function updateGhost() {    ghost.visible = false;
+  function updateGhost() {
+    ghost.visible = false;
+    // Remove ghost span label if present
+    const existingLabel = document.getElementById('ghostSpanLabel');
+    if (existingLabel) existingLabel.style.display = 'none';
+
     if (!hoverPt || hoverPole || hoverTree) return;
     if (poles.some(p => p.x === hoverPt.x && p.z === hoverPt.z)) return;
 
@@ -1005,17 +1523,62 @@ document.addEventListener('DOMContentLoaded', () => {
     ghost.scale.y = h / BASE_H;
     ghost.position.set(hoverPt.x, base + h / 2, hoverPt.z + terrainOffsetZ);
     ghost.visible = true;
+
+    // Show prospective span length only in challenge mode
+    if (challengeState.active) {
+      // Determine start point of span (substation if no poles yet, else last pole)
+      let startX, startZ;
+      if (poles.length === 0 && challengeState.substationBuilding) {
+        startX = challengeState.substationBuilding.x;
+        startZ = challengeState.substationBuilding.z;
+      } else if (poles.length > 0) {
+        startX = poles[poles.length - 1].x;
+        startZ = poles[poles.length - 1].z;
+      } else {
+        return; // No reference point yet
+      }
+
+      const dx = hoverPt.x - startX;
+      const dz = hoverPt.z - startZ;
+      const spanDist = Math.sqrt(dx * dx + dz * dz);
+      const overLimit = UIState.maxSpanLength && spanDist > UIState.maxSpanLength;
+
+      // Create or update label element
+      let label = existingLabel;
+      if (!label) {
+        label = document.createElement('div');
+        label.id = 'ghostSpanLabel';
+        label.style.position = 'absolute';
+        label.style.padding = '2px 6px';
+        label.style.fontSize = '12px';
+        label.style.fontWeight = 'bold';
+        label.style.borderRadius = '3px';
+        label.style.pointerEvents = 'none';
+        label.style.userSelect = 'none';
+        label.style.zIndex = '1500';
+        document.body.appendChild(label);
+      }
+
+      label.textContent = `${spanDist.toFixed(1)} ft${overLimit ? ' (too long)' : ''}`;
+      label.style.backgroundColor = overLimit ? 'rgba(255,0,0,0.85)' : (document.body.classList.contains('dark-mode') ? 'rgba(10,16,20,0.85)' : 'rgba(255,255,255,0.85)');
+      label.style.color = overLimit ? '#ffffff' : (document.body.classList.contains('dark-mode') ? '#00ffe7' : '#000000');
+      label.style.border = overLimit ? '1px solid #ff0000' : (document.body.classList.contains('dark-mode') ? '1px solid #00ffe7' : '1px solid #00000020');
+      label.style.display = 'block';
+
+      // Position label at midpoint between start and ghost in screen space
+      const midPoint = new THREE.Vector3((startX + hoverPt.x) / 2, base + h / 2, (startZ + hoverPt.z) / 2 + terrainOffsetZ);
+      const projected = midPoint.clone();
+      projected.project(camera);
+      const sx = (projected.x * 0.5 + 0.5) * window.innerWidth;
+      const sy = (-projected.y * 0.5 + 0.5) * window.innerHeight;
+      label.style.left = `${sx - label.offsetWidth / 2}px`;
+      label.style.top = `${sy - 20}px`;
+    }
   }
 
   window.addEventListener('contextmenu', e => {
     e.preventDefault();
-    const tPick = pick(e, trees.children);
-    if (tPick) {
-      trees.remove(tPick);
-      treeData.splice(treeData.findIndex(t => t.ref === tPick), 1);
-      rebuild();
-      return;
-    }
+    // Trees feature removed; context menu no longer deletes trees.
     
     const pPick = pick(e, poleMeshes());
     if (pPick) {
@@ -1028,6 +1591,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const pPick = pick(e, poleMeshes());
     if (pPick) {
+      // Check if this is a challenge building (immovable)
+      if (pPick.userData && pPick.userData.challengeBuilding) {
+        return; // Don't allow dragging buildings
+      }
+      
       drag = pPick;
       startY = e.clientY;
       let startX = e.clientX; // Needed to add declaration
@@ -1093,12 +1661,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (hoverPole) hoverPole.material = mPoleHL;
     }
 
-    const tPick = pick(e, trees.children);
-    if (tPick !== hoverTree) {
-      if (hoverTree) setTreeHL(hoverTree, false);
-      hoverTree = tPick;
-      if (hoverTree) setTreeHL(hoverTree, true);
-    }    mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+    mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
     ray.setFromCamera(mouse, camera);
     let hit = null;
     
@@ -1124,6 +1687,9 @@ document.addEventListener('DOMContentLoaded', () => {
       drag = null;
       controls.enabled = true;
       updateLastPoleIndicator(); // Update indicator after drag operation completes
+      
+      // Capture state after drag (height or position change)
+      history.captureState();
       return;
     }
     if (!clickStart) return;
@@ -1218,6 +1784,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (elements.clearanceWarning) {
       elements.clearanceWarning.style.display = 'none';
     }
+    
+    // Clear undo/redo history
+    history.clear();
   }
 
   function createRandomScenario() {
@@ -1242,6 +1811,20 @@ document.addEventListener('DOMContentLoaded', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+  
+  // Keyboard shortcuts for undo/redo
+  window.addEventListener('keydown', (e) => {
+    // Ctrl+Z or Cmd+Z for undo
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      history.undo();
+    }
+    // Ctrl+Y or Ctrl+Shift+Z or Cmd+Shift+Z for redo
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
+      e.preventDefault();
+      history.redo();
+    }
   });
 
   /* ------- geometric calculations ------- */
@@ -1280,6 +1863,12 @@ document.addEventListener('DOMContentLoaded', () => {
     rebuild();
     updateCrossarmOrientations();
     updateLastPoleIndicator(); // Update the last pole indicator for custom poles
+    
+    // Capture initial state for undo/redo
+    history.captureState();
+  } else {
+    // Capture empty initial state
+    history.captureState();
   }
 
   function createBird() {
@@ -2348,6 +2937,9 @@ document.addEventListener('DOMContentLoaded', () => {
       updateSagCalculations();
       updatePoleHeightLabels();
       checkClearances();
+      
+      // Capture state after import for undo/redo
+      history.captureState();
       
       // Success!
       setTimeout(() => {
