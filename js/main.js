@@ -1543,9 +1543,35 @@ document.addEventListener('DOMContentLoaded', () => {
           acuteCase = true;
         }
       } else if (prev) {
-        dirs.push(new THREE.Vector3(prev.x - pole.x, 0, prev.z - pole.z).normalize());
+        // Terminal pole with only previous neighbor - add TWO crossarms
+        const spanDir = new THREE.Vector3(prev.x - pole.x, 0, prev.z - pole.z).normalize();
+        // Add crossarms in both perpendicular directions (parallel to each other)
+        const perp1 = new THREE.Vector3(-spanDir.z, 0, spanDir.x).normalize();
+        const perp2 = new THREE.Vector3(spanDir.z, 0, -spanDir.x).normalize();
+        
+        // Add both crossarms directly with calculated perpendicular orientations
+        [perp1, perp2].forEach(perp => {
+          const angle = -Math.atan2(perp.z, perp.x);
+          const arm = new THREE.Mesh(crossArmGeo, mCrossArm);
+          arm.position.y = 5;
+          arm.rotation.y = angle;
+          pole.obj.add(arm);
+        });
       } else if (next) {
-        dirs.push(new THREE.Vector3(next.x - pole.x, 0, next.z - pole.z).normalize());
+        // Terminal pole with only next neighbor - add TWO crossarms
+        const spanDir = new THREE.Vector3(next.x - pole.x, 0, next.z - pole.z).normalize();
+        // Add crossarms in both perpendicular directions (parallel to each other)
+        const perp1 = new THREE.Vector3(-spanDir.z, 0, spanDir.x).normalize();
+        const perp2 = new THREE.Vector3(spanDir.z, 0, -spanDir.x).normalize();
+        
+        // Add both crossarms directly with calculated perpendicular orientations
+        [perp1, perp2].forEach(perp => {
+          const angle = -Math.atan2(perp.z, perp.x);
+          const arm = new THREE.Mesh(crossArmGeo, mCrossArm);
+          arm.position.y = 5;
+          arm.rotation.y = angle;
+          pole.obj.add(arm);
+        });
       }
 
       dirs.forEach(dir => {

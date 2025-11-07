@@ -103,7 +103,7 @@ Future enhancements could include:
 
 ## 📐 Catenary Math: The Physics Behind the Sag
 
-Power lines don't hang in a parabolic arc—they form a **catenary curve**, the natural shape of a flexible cable suspended under its own weight. GridScaper uses catenary-inspired math to realistically simulate conductor sag.
+Power lines don't hang in a parabolic arc—they form a **catenary curve**, the natural shape of a flexible cable suspended under its own weight. GridScaper uses true catenary mathematics to realistically simulate conductor sag.
 
 ### Catenary vs. Parabola
 
@@ -116,67 +116,98 @@ Power lines don't hang in a parabolic arc—they form a **catenary curve**, the 
 
 ### How GridScaper Computes Conductor Sag
 
-The app uses a **sine approximation** of the catenary for real-time performance, trading mathematical rigor for visual accuracy. Here's the core logic from `utils/catenary.js`:
+The app uses **true catenary equations** with the hyperbolic cosine function to accurately model conductor behavior. Here's how it works:
+
+#### The Catenary Equation
+
+For a cable hanging between two level supports separated by distance *L*, the shape is:
+
+```text
+y = a·cosh(x/a) + c
+```
+
+Where:
+
+* `a` is the **catenary parameter** (ratio of horizontal tension to weight per unit length)
+* `x` is the horizontal distance from the low point
+* `c` is a vertical offset constant
+
+#### Solving for the Catenary Parameter
+
+Given a desired sag *S* (maximum vertical drop at midspan), we solve for `a` using:
+
+```text
+S = a·(cosh(L/(2a)) - 1)
+```
+
+GridScaper uses the **Newton-Raphson method** to iteratively solve this transcendental equation:
 
 ```javascript
-/**
- * Calculate conductor curve points between two poles
- * 
- * True catenary: y = a·cosh(x/a) + c
- * GridScaper approximation: sine curve with physics-based sag factor
- */
-export function getConductorCurve(options) {
-  const { poleA, poleB, tension = 1, samples = 32 } = options;
-
-  // Attachment heights at crossarms
-  const heightA = poleA.base + poleA.h;
-  const heightB = poleB.base + poleB.h;
-
-  // Horizontal span distance
-  const spanLength = Math.hypot(poleB.x - poleA.x, poleB.z - poleA.z);
-
-  // Calculate sag: base 5% of span, reduced by tension factor
-  const baseSag = Math.max(0.1, spanLength * 0.05) / tension;
+function solveCatenaryParameter(span, targetSag, maxIterations = 20) {
+  // Initial guess from parabolic approximation: a ≈ L²/(8·sag)
+  let a = (span * span) / (8 * targetSag);
   
-  // Height difference reduces effective sag (angled conductors)
-  const heightDiff = Math.abs(heightB - heightA);
-  const heightFactor = 1 / (1 + (heightDiff / spanLength) * 0.5);
-  const sag = baseSag * heightFactor;
-
-  // Generate curve points
-  const points = [];
-  for (let i = 0; i <= samples; i++) {
-    const t = i / samples; // 0 → 1 along span
-
-    // Linear interpolation for position
-    const x = poleA.x + (poleB.x - poleA.x) * t;
-    const z = poleA.z + (poleB.z - poleA.z) * t;
-
-    // Height with sine-based sag (peaks at midpoint)
-    const y = heightA + (heightB - heightA) * t - sag * Math.sin(Math.PI * t);
-
-    points.push({ x, y, z });
+  const halfSpan = span / 2;
+  
+  for (let i = 0; i < maxIterations; i++) {
+    const x = halfSpan / a;
+    const coshX = Math.cosh(x);
+    const sinhX = Math.sinh(x);
+    
+    // Function: f(a) = a·(cosh(L/(2a)) - 1) - targetSag
+    const f = a * (coshX - 1) - targetSag;
+    
+    // Derivative: f'(a) = cosh(x) - 1 - x·sinh(x)
+    const df = coshX - 1 - x * sinhX;
+    
+    // Newton-Raphson update
+    const aNew = a - f / df;
+    
+    if (Math.abs(aNew - a) < 0.001) return aNew;
+    a = aNew;
   }
-
-  return points;
+  
+  return a;
 }
+```
+
+#### Computing the Curve
+
+Once `a` is determined, points along the conductor are calculated:
+
+```javascript
+// For each point along the span (t from 0 to 1)
+const t = i / samples;
+
+// Local horizontal coordinate centered at midspan
+const localX = (t - 0.5) * spanLength;
+
+// True catenary sag at this point
+const catenaryY = a * (Math.cosh(localX / a) - 1);
+
+// Height along straight line from pole A to pole B
+const straightLineHeight = heightA + (heightB - heightA) * t;
+
+// Final height is straight line minus catenary sag
+const y = straightLineHeight - catenaryY;
 ```
 
 ### Key Parameters
 
 * **Tension Factor**: Higher values (more tension) reduce sag proportionally. Default is 1.0; UI slider maps 500–5000 lbs to a 0.2–5.0 multiplier.
-* **Height Difference Penalty**: When poles have different elevations, the angled conductor experiences more tension, reducing sag by up to 50%.
-* **Sine vs. Hyperbolic Cosine**: The sine approximation `Math.sin(π·t)` is visually similar to `cosh` for typical spans but computes ~10× faster for real-time animation.
+* **Base Sag**: 5% of span length divided by tension factor, with a minimum of 0.1 units.
+* **Inclined Spans**: For poles at different heights, the catenary is calculated in a tilted coordinate system, maintaining the natural hanging shape.
 
-### Why It Matters
+### Why True Catenary Matters
 
-Accurate sag modeling is critical for:
+Accurate catenary modeling is critical for:
 
-* **Clearance Safety**: Ensuring conductors stay above minimum ground/vegetation distances.
-* **Structural Design**: Calculating pole loading and selecting appropriate hardware.
+* **Clearance Safety**: Ensuring conductors stay above minimum ground/vegetation distances at all points.
+* **Structural Design**: Calculating accurate pole loading and conductor tensions for hardware selection.
 * **Cost Optimization**: Balancing span length (fewer poles) against sag (taller poles, higher tension).
+* **Physical Realism**: The hyperbolic cosine shape is the mathematically exact solution for a uniform cable under gravity.
 
-This simplified model helps you explore these trade-offs interactively—though real engineering requires full catenary equations, material properties, and environmental loads (ice, wind, temperature).
+This true catenary model helps you explore engineering trade-offs with physically accurate conductor behavior—the same mathematics used in real power line design.
 
 ## ⚔️ Challenge Mode (Budget + Objectives)
 
