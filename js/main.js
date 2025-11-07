@@ -221,9 +221,35 @@ document.addEventListener('DOMContentLoaded', () => {
   const mPoleHL = materials.poleHighlight;
   const mGood = materials.goodSpan;
   const mBird = materials.bird; // Bird material
+  const mGhost = materials.ghost;
 
   // Birds collection (re-added after refactor)
   const birds = [];
+  // Hover state trackers (trees removed but keep variable to avoid reference errors)
+  let hoverPole = null;
+  let hoverPt = null;
+  let hoverTree = null;
+
+  // Labels / annotation collections
+  const poleHeightLabels = [];
+  const sagCalculationObjects = [];
+
+  // Ghost pole mesh placeholder
+  const ghost = new THREE.Mesh(poleGeo, mGhost.clone());
+  ghost.visible = false;
+  ghost.userData.ghost = true;
+  scene.add(ghost);
+
+  // Last pole outer indicator (pulsing ring) + existing inner indicator
+  const mLastPoleOuterIndicator = new THREE.LineBasicMaterial({
+    color: 0xffff00,
+    transparent: true,
+    opacity: 0.5,
+    linewidth: 1
+  });
+  let lastPoleIndicator = new THREE.Line(new THREE.BufferGeometry(), mLastPoleOuterIndicator);
+  lastPoleIndicator.visible = false;
+  scene.add(lastPoleIndicator);
 
   // Declare mouse and ray BEFORE any picking helpers use them
   const mouse = new THREE.Vector2();
@@ -464,23 +490,17 @@ document.addEventListener('DOMContentLoaded', () => {
   function toggleGridVisibility(visible) {
     scene.children.filter(o => o.userData.grid).forEach(g => {
       g.visible = visible;
-      
-      if (g.userData.labels) {
-        // If grid lines are hidden, always hide labels regardless of label toggle state
-        g.userData.labels.forEach(label => {
-          label.element.style.display = visible && UIState.showGridLabels ? 'block' : 'none';
-        });
-      }
     });
+    // Re-sync labels after changing grid visibility
+    toggleGridLabels(UIState.showGridLabels);
   }
 
   // Separate label visibility toggle
   function toggleGridLabels(visible) {
     scene.children.filter(o => o.userData.grid).forEach(g => {
       if (!g.userData.labels) return;
-      // Only show labels if grid itself is visible
       g.userData.labels.forEach(label => {
-        label.element.style.display = (g.visible && visible) ? 'block' : 'none';
+        label.element.style.display = visible ? 'block' : 'none';
       });
     });
   }
@@ -741,15 +761,36 @@ document.addEventListener('DOMContentLoaded', () => {
       obj: challengeState.customerMesh
     };
     
+    // Create connection range indicator circle around customer
+    const connectionRange = 15; // feet
+    const targetCircleGeometry = createTerrainConformingCircle(
+      challengeState.customerBuilding.x,
+      challengeState.customerBuilding.z + terrainOffsetZ,
+      connectionRange,
+      64
+    );
+    const targetCircleMaterial = new THREE.LineBasicMaterial({
+      color: 0x3b82f6, // Blue to match customer building
+      transparent: true,
+      opacity: 0.5,
+      linewidth: 2
+    });
+    challengeState.targetCircle = new THREE.Line(targetCircleGeometry, targetCircleMaterial);
+    challengeState.targetCircle.userData.challengeIndicator = true;
+    scene.add(challengeState.targetCircle);
+    
     // Activate challenge mode
     challengeState.active = true;
     challengeState.isPowered = false;
     UIState.challengeMode = true;
     UIState.challengeSpent = 0;
     
-    // Show challenge panel
+    // Show challenge panel with current budget
     if (elements.challengePanel) {
       elements.challengePanel.classList.add('active');
+    }
+    if (elements.challengeBudget) {
+      elements.challengeBudget.textContent = `$${UIState.challengeBudget.toLocaleString()}`;
     }
     // Toggle mode buttons visibility
     const challengeBtn = document.getElementById('toggleChallengeMode');
@@ -779,6 +820,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (challengeState.customerMesh) {
       scene.remove(challengeState.customerMesh);
       challengeState.customerMesh = null;
+    }
+    
+    // Remove target circle
+    if (challengeState.targetCircle) {
+      scene.remove(challengeState.targetCircle);
+      if (challengeState.targetCircle.geometry) {
+        challengeState.targetCircle.geometry.dispose();
+      }
+      if (challengeState.targetCircle.material) {
+        challengeState.targetCircle.material.dispose();
+      }
+      challengeState.targetCircle = null;
     }
     
     // Deactivate challenge mode
@@ -840,9 +893,18 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateChallengeStats() {
     if (!challengeState.active) return;
     
-    // Calculate costs
+    // Calculate costs with variable pole pricing based on height
     const poleCount = poles.length;
-    const poleCost = poleCount * UIState.costPerPole;
+    let poleCost = 0;
+    
+    // Calculate pole cost: base cost + height multiplier
+    // Shorter poles (10ft) cost less, taller poles (30ft+) cost more
+    poles.forEach(pole => {
+      const basePoleCost = UIState.costPerPole; // $1500 for a standard pole
+      const heightFactor = pole.h / 20; // 20ft is the reference height
+      const thisPoleCoast = basePoleCost * heightFactor;
+      poleCost += thisPoleCoast;
+    });
     
     // Calculate conductor length
     let conductorLength = 0;
@@ -1760,6 +1822,18 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Clean up pole height labels array
     poleHeightLabels.length = 0;
+    
+    // Clean up sag calculation objects
+    sagCalculationObjects.forEach(obj => {
+      if (obj.line) scene.remove(obj.line);
+      if (obj.sagLine) scene.remove(obj.sagLine);
+      if (obj.line && obj.line.geometry) obj.line.geometry.dispose();
+      if (obj.sagLine && obj.sagLine.geometry) obj.sagLine.geometry.dispose();
+      if (obj.label && obj.label.parentNode) {
+        obj.label.parentNode.removeChild(obj.label);
+      }
+    });
+    sagCalculationObjects.length = 0;
 
     poles.forEach(p => scene.remove(p.obj));
     poles.length = 0;
@@ -2079,28 +2153,29 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Update grid labels position if they exist
     scene.children.filter(o => o.userData.grid && o.userData.labels).forEach(grid => {
-      if (grid.userData.labels && grid.visible) {
-        grid.userData.labels.forEach(label => {
-          const screenPosition = label.position.clone();
-          screenPosition.project(camera);
-          
-          const x = (screenPosition.x * 0.5 + 0.5) * window.innerWidth;
-          const y = (-(screenPosition.y * 0.5) + 0.5) * window.innerHeight;
-          
-          if (screenPosition.z < 1) {
-            label.element.style.display = 'block';
-            label.element.style.transform = `translate(-50%, -50%)`;
-            label.element.style.left = `${x}px`;
-            label.element.style.top = `${y}px`;
-          } else {
-            label.element.style.display = 'none';
-          }
-        });
-      } else if (grid.userData.labels) {
-        grid.userData.labels.forEach(label => {
+      if (!grid.userData.labels) return;
+
+      grid.userData.labels.forEach(label => {
+        if (!UIState.showGridLabels) {
           label.element.style.display = 'none';
-        });
-      }
+          return;
+        }
+
+        const screenPosition = label.position.clone();
+        screenPosition.project(camera);
+        
+        const x = (screenPosition.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-(screenPosition.y * 0.5) + 0.5) * window.innerHeight;
+        
+        if (screenPosition.z < 1) {
+          label.element.style.display = 'block';
+          label.element.style.transform = `translate(-50%, -50%)`;
+          label.element.style.left = `${x}px`;
+          label.element.style.top = `${y}px`;
+        } else {
+          label.element.style.display = 'none';
+        }
+      });
     });
 
     // Update pole height labels position if they exist

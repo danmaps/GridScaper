@@ -11,7 +11,7 @@ export const UIState = {
   showClearanceBuffers: false,
   // Challenge mode state
   challengeMode: false,
-  challengeBudget: 50000,
+  challengeBudget: 5500,
   challengeSpent: 0,
   costPerPole: 1500,
   costPerFoot: 10,

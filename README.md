@@ -101,6 +101,83 @@ Future enhancements could include:
 * **Visual Grid Overlay**: Toggle a visual grid on the terrain with coordinate labels that follow the terrain's contour.
 * **Crossarm Orientation**: Crossarms on poles automatically orient themselves based on the direction of the connected power lines.
 
+## 📐 Catenary Math: The Physics Behind the Sag
+
+Power lines don't hang in a parabolic arc—they form a **catenary curve**, the natural shape of a flexible cable suspended under its own weight. GridScaper uses catenary-inspired math to realistically simulate conductor sag.
+
+### Catenary vs. Parabola
+
+| Aspect | Catenary | Parabola |
+|--------|----------|----------|
+| **Equation** | `y = a·cosh(x/a)` | `y = x²` |
+| **Physical Cause** | Uniform weight per unit length of cable | Uniform vertical load (e.g., bridge deck) |
+| **Real-World Examples** | Power lines, hanging chains | Suspension bridge cables under deck load |
+| **Sag Behavior** | More gradual near supports, steeper in middle | Symmetric, quadratic curve |
+
+### How GridScaper Computes Conductor Sag
+
+The app uses a **sine approximation** of the catenary for real-time performance, trading mathematical rigor for visual accuracy. Here's the core logic from `utils/catenary.js`:
+
+```javascript
+/**
+ * Calculate conductor curve points between two poles
+ * 
+ * True catenary: y = a·cosh(x/a) + c
+ * GridScaper approximation: sine curve with physics-based sag factor
+ */
+export function getConductorCurve(options) {
+  const { poleA, poleB, tension = 1, samples = 32 } = options;
+
+  // Attachment heights at crossarms
+  const heightA = poleA.base + poleA.h;
+  const heightB = poleB.base + poleB.h;
+
+  // Horizontal span distance
+  const spanLength = Math.hypot(poleB.x - poleA.x, poleB.z - poleA.z);
+
+  // Calculate sag: base 5% of span, reduced by tension factor
+  const baseSag = Math.max(0.1, spanLength * 0.05) / tension;
+  
+  // Height difference reduces effective sag (angled conductors)
+  const heightDiff = Math.abs(heightB - heightA);
+  const heightFactor = 1 / (1 + (heightDiff / spanLength) * 0.5);
+  const sag = baseSag * heightFactor;
+
+  // Generate curve points
+  const points = [];
+  for (let i = 0; i <= samples; i++) {
+    const t = i / samples; // 0 → 1 along span
+
+    // Linear interpolation for position
+    const x = poleA.x + (poleB.x - poleA.x) * t;
+    const z = poleA.z + (poleB.z - poleA.z) * t;
+
+    // Height with sine-based sag (peaks at midpoint)
+    const y = heightA + (heightB - heightA) * t - sag * Math.sin(Math.PI * t);
+
+    points.push({ x, y, z });
+  }
+
+  return points;
+}
+```
+
+### Key Parameters
+
+* **Tension Factor**: Higher values (more tension) reduce sag proportionally. Default is 1.0; UI slider maps 500–5000 lbs to a 0.2–5.0 multiplier.
+* **Height Difference Penalty**: When poles have different elevations, the angled conductor experiences more tension, reducing sag by up to 50%.
+* **Sine vs. Hyperbolic Cosine**: The sine approximation `Math.sin(π·t)` is visually similar to `cosh` for typical spans but computes ~10× faster for real-time animation.
+
+### Why It Matters
+
+Accurate sag modeling is critical for:
+
+* **Clearance Safety**: Ensuring conductors stay above minimum ground/vegetation distances.
+* **Structural Design**: Calculating pole loading and selecting appropriate hardware.
+* **Cost Optimization**: Balancing span length (fewer poles) against sag (taller poles, higher tension).
+
+This simplified model helps you explore these trade-offs interactively—though real engineering requires full catenary equations, material properties, and environmental loads (ice, wind, temperature).
+
 ## ⚔️ Challenge Mode (Budget + Objectives)
 
 Challenge Mode turns GridScaper into a mini planning puzzle: connect power from the green substation cube to the blue customer cube efficiently, safely, and under budget.
