@@ -615,6 +615,12 @@ body.dark-mode {
       align-items: center;
       z-index: 900;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      transition: bottom 0.3s ease;
+    }
+    
+    /* Move tool panel up when challenge mode is active */
+    #challengePanel.active ~ #toolPanel {
+      bottom: 140px;
     }
     
     .tool-button {
@@ -894,7 +900,7 @@ body.dark-mode {
       <div class="tool-icon">🏗️</div>
       <div class="tool-name">Pole</div>
     </div>
-    <div class="tool-button" id="conductorTool" data-tool="conductor" title="Draw conductors (C)">
+    <div class="tool-button active" id="conductorTool" data-tool="conductor" title="Draw conductors (C)">
       <div class="tool-icon">⚡</div>
       <div class="tool-name">Conductor</div>
     </div>

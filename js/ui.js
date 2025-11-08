@@ -17,9 +17,9 @@ export const UIState = {
   costPerFoot: 10,
   maxSpanLength: 40, // Maximum distance between poles in challenge mode
   // Tool state
-  activeTool: 'pole', // 'pole', 'conductor', or 'eraser'
+  activeTool: 'both', // 'pole', 'conductor', 'both', or 'eraser'
   poleToolActive: true,
-  conductorToolActive: false,
+  conductorToolActive: true,
   eraserToolActive: false,
   // Conductor drawing state
   conductorStartPole: null, // First pole selected for conductor drawing
