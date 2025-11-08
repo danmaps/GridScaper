@@ -599,6 +599,72 @@ body.dark-mode {
       background: #3b82f6;
       box-shadow: 0 0 10px #3b82f6;
     }
+    
+    /* Tool Panel */
+    #toolPanel {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--primary-bg);
+      border: 2px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 12px 20px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      z-index: 900;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+    
+    .tool-button {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 12px 16px;
+      background: var(--input-bg);
+      border: 2px solid var(--input-border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      min-width: 80px;
+      color: var(--text);
+      font-family: sans-serif;
+    }
+    
+    .tool-button:hover {
+      background: var(--button-hover);
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    }
+    
+    .tool-button.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #000;
+      font-weight: bold;
+    }
+    
+    .tool-icon {
+      font-size: 24px;
+      line-height: 1;
+    }
+    
+    .tool-name {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .tool-separator {
+      width: 2px;
+      height: 50px;
+      background: var(--panel-border);
+      margin: 0 4px;
+    }
   </style>
   <script src="https://unpkg.com/three@0.139.2/build/three.min.js"></script>
   <script src="https://unpkg.com/three@0.139.2/examples/js/controls/OrbitControls.js"></script>
@@ -633,7 +699,7 @@ body.dark-mode {
   </div>
     
     <div class="hud-content" id="hudContent">
-      <div class="instructions"><strong>Left-click</strong>: add pole | <strong>Right-click</strong>: delete pole | <strong>Alt-drag</strong>: resize pole height</div>
+      <div class="instructions"><strong>P</strong>: Pole tool | <strong>C</strong>: Conductor tool | <strong>E</strong>: Eraser tool | <strong>Alt-drag</strong>: resize pole height</div>
       
       <!-- History Section -->
       <div class="control-section">
@@ -819,6 +885,23 @@ body.dark-mode {
         <button id="checkSolution">✓ Check Solution</button>
         <button id="resetChallenge">↻ Reset</button>
       </div>
+    </div>
+  </div>
+  
+  <!-- Tool Panel -->
+  <div id="toolPanel">
+    <div class="tool-button active" id="poleTool" data-tool="pole" title="Place poles (P)">
+      <div class="tool-icon">🏗️</div>
+      <div class="tool-name">Pole</div>
+    </div>
+    <div class="tool-button" id="conductorTool" data-tool="conductor" title="Draw conductors (C)">
+      <div class="tool-icon">⚡</div>
+      <div class="tool-name">Conductor</div>
+    </div>
+    <div class="tool-separator"></div>
+    <div class="tool-button" id="eraserTool" data-tool="eraser" title="Erase (E)">
+      <div class="tool-icon">🗑️</div>
+      <div class="tool-name">Eraser</div>
     </div>
   </div>
   

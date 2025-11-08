@@ -15,7 +15,15 @@ export const UIState = {
   challengeSpent: 0,
   costPerPole: 1500,
   costPerFoot: 10,
-  maxSpanLength: 40 // Maximum distance between poles in challenge mode
+  maxSpanLength: 40, // Maximum distance between poles in challenge mode
+  // Tool state
+  activeTool: 'pole', // 'pole', 'conductor', or 'eraser'
+  poleToolActive: true,
+  conductorToolActive: false,
+  eraserToolActive: false,
+  // Conductor drawing state
+  conductorStartPole: null, // First pole selected for conductor drawing
+  conductorHoverPole: null  // Pole being hovered over during conductor drawing
 };
 
 export const elements = {
@@ -55,7 +63,12 @@ export const elements = {
   get challengeRemaining() { return document.getElementById('challengeRemaining'); },
   get challengePoles() { return document.getElementById('challengePoles'); },
   get checkSolution() { return document.getElementById('checkSolution'); },
-  get resetChallenge() { return document.getElementById('resetChallenge'); }
+  get resetChallenge() { return document.getElementById('resetChallenge'); },
+  // Tool panel elements
+  get toolPanel() { return document.getElementById('toolPanel'); },
+  get poleTool() { return document.getElementById('poleTool'); },
+  get conductorTool() { return document.getElementById('conductorTool'); },
+  get eraserTool() { return document.getElementById('eraserTool'); }
 };
 
 export function initUI() {
@@ -261,6 +274,87 @@ export function setupUI(callbacks, dependencies) {
   if (elements.resetChallenge) {
     elements.resetChallenge.onclick = resetChallengeLevel;
   }
+  
+  // Tool panel setup
+  setupToolPanel();
+}
+
+function setupToolPanel() {
+  const toolButtons = [elements.poleTool, elements.conductorTool, elements.eraserTool];
+  
+  toolButtons.forEach(button => {
+    if (!button) return;
+    
+    button.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent click from reaching canvas
+      const tool = button.dataset.tool;
+      
+      if (tool === 'eraser') {
+        // Eraser is mutually exclusive
+        UIState.eraserToolActive = !UIState.eraserToolActive;
+        
+        if (UIState.eraserToolActive) {
+          UIState.poleToolActive = false;
+          UIState.conductorToolActive = false;
+          UIState.activeTool = 'eraser';
+          elements.poleTool?.classList.remove('active');
+          elements.conductorTool?.classList.remove('active');
+          elements.eraserTool?.classList.add('active');
+        } else {
+          // If turning off eraser, default back to pole tool
+          UIState.poleToolActive = true;
+          UIState.activeTool = 'pole';
+          elements.poleTool?.classList.add('active');
+          elements.eraserTool?.classList.remove('active');
+        }
+      } else {
+        // Pole and conductor can be toggled together
+        UIState.eraserToolActive = false;
+        elements.eraserTool?.classList.remove('active');
+        
+        if (tool === 'pole') {
+          UIState.poleToolActive = !UIState.poleToolActive;
+          button.classList.toggle('active', UIState.poleToolActive);
+        } else if (tool === 'conductor') {
+          UIState.conductorToolActive = !UIState.conductorToolActive;
+          button.classList.toggle('active', UIState.conductorToolActive);
+          
+          // Reset conductor drawing state when toggling off
+          if (!UIState.conductorToolActive) {
+            UIState.conductorStartPole = null;
+            UIState.conductorHoverPole = null;
+          }
+        }
+        
+        // Determine active tool
+        if (UIState.poleToolActive && UIState.conductorToolActive) {
+          UIState.activeTool = 'both';
+        } else if (UIState.poleToolActive) {
+          UIState.activeTool = 'pole';
+        } else if (UIState.conductorToolActive) {
+          UIState.activeTool = 'conductor';
+        } else {
+          // At least one must be active, default to pole
+          UIState.poleToolActive = true;
+          UIState.activeTool = 'pole';
+          elements.poleTool?.classList.add('active');
+        }
+      }
+    });
+  });
+  
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    
+    if (e.key === 'p' || e.key === 'P') {
+      elements.poleTool?.click();
+    } else if (e.key === 'c' || e.key === 'C') {
+      elements.conductorTool?.click();
+    } else if (e.key === 'e' || e.key === 'E') {
+      elements.eraserTool?.click();
+    }
+  });
 }
 
 export function getUIValues() {

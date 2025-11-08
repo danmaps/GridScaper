@@ -179,14 +179,43 @@ document.addEventListener('DOMContentLoaded', () => {
   // Each span entry will store references to pole objects (not meshes directly) for later graph-based operations.
   // Primary poles collection (was implicit previously, now explicitly declared before spans usage)
   const poles = [];
-  const spans = [];
+  const spans = []; // Manual conductor connections: { a: pole1, b: pole2, type: 'pole' }
 
   function updateSequentialSpans() {
-    // Clear and rebuild spans based on current pole ordering.
-    spans.length = 0;
-    for (let i = 1; i < poles.length; i++) {
-      spans.push({ a: poles[i - 1], b: poles[i], type: 'pole' });
+    // No longer auto-generates spans
+    // Spans are now manually created by user with conductor tool
+    // Keep existing manually-created spans
+  }
+  
+  function addSpan(poleA, poleB) {
+    // Check if span already exists
+    const exists = spans.some(s => 
+      (s.a === poleA && s.b === poleB) || (s.a === poleB && s.b === poleA)
+    );
+    
+    if (!exists) {
+      spans.push({ a: poleA, b: poleB, type: 'pole' });
+      rebuild();
+      history.captureState();
     }
+  }
+  
+  function removeSpan(poleA, poleB) {
+    const index = spans.findIndex(s => 
+      (s.a === poleA && s.b === poleB) || (s.a === poleB && s.b === poleA)
+    );
+    
+    if (index !== -1) {
+      spans.splice(index, 1);
+      rebuild();
+      history.captureState();
+    }
+  }
+  
+  function hasSpan(poleA, poleB) {
+    return spans.some(s => 
+      (s.a === poleA && s.b === poleB) || (s.a === poleB && s.b === poleA)
+    );
   }
   
   // Initialize UI elements early (without event handlers)
@@ -250,6 +279,17 @@ document.addEventListener('DOMContentLoaded', () => {
   let lastPoleIndicator = new THREE.Line(new THREE.BufferGeometry(), mLastPoleOuterIndicator);
   lastPoleIndicator.visible = false;
   scene.add(lastPoleIndicator);
+  
+  // Conductor hover halo (glowing pulsing ring around pole top)
+  const mConductorHalo = new THREE.LineBasicMaterial({
+    color: 0x00ffe7,
+    transparent: true,
+    opacity: 0.8,
+    linewidth: 2
+  });
+  let conductorHalo = new THREE.Line(new THREE.BufferGeometry(), mConductorHalo);
+  conductorHalo.visible = false;
+  scene.add(conductorHalo);
 
   // Declare mouse and ray BEFORE any picking helpers use them
   const mouse = new THREE.Vector2();
@@ -1506,6 +1546,15 @@ document.addEventListener('DOMContentLoaded', () => {
   function removePole(obj){ 
     const i = poles.findIndex(p => p.obj === obj); 
     if(i > -1){
+      const pole = poles[i];
+      
+      // Remove all spans connected to this pole
+      for (let j = spans.length - 1; j >= 0; j--) {
+        if (spans[j].a === pole || spans[j].b === pole) {
+          spans.splice(j, 1);
+        }
+      }
+      
       scene.remove(obj); 
       poles.splice(i, 1); 
       rebuild();
@@ -1524,32 +1573,71 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateCrossarmOrientations() {
     poles.forEach((pole, index) => {
+      // Remove all existing crossarms
       pole.obj.children.filter(child => child.geometry.type === 'BoxGeometry')
         .forEach(child => pole.obj.remove(child));
 
-      const prev = index > 0 ? poles[index-1] : null;
-      const next = index < poles.length-1 ? poles[index+1] : null;
+      // Find all spans connected to this pole
+      const connectedSpans = spans.filter(s => s.a === pole || s.b === pole);
+      
+      // Get directions to connected poles
       const dirs = [];
-      let acuteCase = false;
-
-      if (prev && next) {
-        const v1 = new THREE.Vector3(prev.x - pole.x, 0, prev.z - pole.z).normalize();
-        const v2 = new THREE.Vector3(next.x - pole.x, 0, next.z - pole.z).normalize();
-        const topAngle = calculateTopAngle(prev, pole, next);
-        if (topAngle >= 90) {
-          dirs.push(v1, v2);
-        } else {
-          dirs.push(v1, v2);
-          acuteCase = true;
+      connectedSpans.forEach(span => {
+        const otherPole = span.a === pole ? span.b : span.a;
+        const dir = new THREE.Vector3(otherPole.x - pole.x, 0, otherPole.z - pole.z).normalize();
+        dirs.push(dir);
+      });
+      
+      // In challenge mode, check for connections to buildings
+      if (challengeState.active) {
+        // First pole: check for substation connection
+        if (index === 0 && challengeState.substationBuilding) {
+          const dir = new THREE.Vector3(
+            challengeState.substationBuilding.x - pole.x, 
+            0, 
+            challengeState.substationBuilding.z - pole.z
+          ).normalize();
+          dirs.push(dir);
         }
-      } else if (prev) {
-        // Terminal pole with only previous neighbor - add TWO crossarms
-        const spanDir = new THREE.Vector3(prev.x - pole.x, 0, prev.z - pole.z).normalize();
-        // Add crossarms in both perpendicular directions (parallel to each other)
+        
+        // Last pole: check for customer connection (if in range)
+        if (index === poles.length - 1 && challengeState.customerBuilding) {
+          const dx = pole.x - challengeState.customerBuilding.x;
+          const dz = pole.z - challengeState.customerBuilding.z;
+          const distance = Math.sqrt(dx * dx + dz * dz);
+          if (distance <= 15) { // connection range
+            const dir = new THREE.Vector3(
+              challengeState.customerBuilding.x - pole.x, 
+              0, 
+              challengeState.customerBuilding.z - pole.z
+            ).normalize();
+            dirs.push(dir);
+          }
+        }
+      }
+      
+      // If no conductors connected, no crossarms needed
+      if (dirs.length === 0) {
+        return;
+      }
+      
+      // Check if this is an angle pole (2+ connections with acute angle)
+      let acuteCase = false;
+      if (dirs.length >= 2) {
+        const topAngle = calculateTopAngle(
+          { x: pole.x + dirs[0].x, z: pole.z + dirs[0].z }, 
+          pole, 
+          { x: pole.x + dirs[1].x, z: pole.z + dirs[1].z }
+        );
+        acuteCase = topAngle < 90;
+      }
+      
+      // Terminal pole (only one connection) - add TWO parallel crossarms
+      if (dirs.length === 1) {
+        const spanDir = dirs[0];
         const perp1 = new THREE.Vector3(-spanDir.z, 0, spanDir.x).normalize();
         const perp2 = new THREE.Vector3(spanDir.z, 0, -spanDir.x).normalize();
         
-        // Add both crossarms directly with calculated perpendicular orientations
         [perp1, perp2].forEach(perp => {
           const angle = -Math.atan2(perp.z, perp.x);
           const arm = new THREE.Mesh(crossArmGeo, mCrossArm);
@@ -1557,32 +1645,18 @@ document.addEventListener('DOMContentLoaded', () => {
           arm.rotation.y = angle;
           pole.obj.add(arm);
         });
-      } else if (next) {
-        // Terminal pole with only next neighbor - add TWO crossarms
-        const spanDir = new THREE.Vector3(next.x - pole.x, 0, next.z - pole.z).normalize();
-        // Add crossarms in both perpendicular directions (parallel to each other)
-        const perp1 = new THREE.Vector3(-spanDir.z, 0, spanDir.x).normalize();
-        const perp2 = new THREE.Vector3(spanDir.z, 0, -spanDir.x).normalize();
-        
-        // Add both crossarms directly with calculated perpendicular orientations
-        [perp1, perp2].forEach(perp => {
+      } else {
+        // Multiple connections - add crossarm for each direction
+        dirs.forEach(dir => {
+          const perp = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
           const angle = -Math.atan2(perp.z, perp.x);
           const arm = new THREE.Mesh(crossArmGeo, mCrossArm);
+          if (acuteCase) arm.scale.x = 1;
           arm.position.y = 5;
           arm.rotation.y = angle;
           pole.obj.add(arm);
         });
       }
-
-      dirs.forEach(dir => {
-        const perp = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
-        const angle = -Math.atan2(perp.z, perp.x);
-        const arm = new THREE.Mesh(crossArmGeo, mCrossArm);
-        if (acuteCase) arm.scale.x = 1;
-        arm.position.y = 5;
-        arm.rotation.y = angle;
-        pole.obj.add(arm);
-      });
     });
   }
 
@@ -1590,7 +1664,16 @@ document.addEventListener('DOMContentLoaded', () => {
   function pick(evt, list){
     mouse.set((evt.clientX / window.innerWidth) * 2 - 1, -(evt.clientY / window.innerHeight) * 2 + 1);
     ray.setFromCamera(mouse, camera);
-    return ray.intersectObjects(list, true)[0]?.object || null;
+    const hit = ray.intersectObjects(list, true)[0];
+    if (!hit) return null;
+    
+    // If we hit a child (like a crossarm), find the parent pole mesh
+    let obj = hit.object;
+    while (obj.parent && !list.includes(obj)) {
+      obj = obj.parent;
+    }
+    
+    return list.includes(obj) ? obj : null;
   }
   
   const poleMeshes = () => poles.map(p => p.obj);
@@ -1601,8 +1684,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // Remove ghost span label if present
     const existingLabel = document.getElementById('ghostSpanLabel');
     if (existingLabel) existingLabel.style.display = 'none';
+    
+    // Show conductor preview if conductor tool is active and we have a start pole and hover pole
+    if (UIState.conductorToolActive && UIState.conductorStartPole && UIState.conductorHoverPole) {
+      // TODO: Add ghost conductor line preview between the two poles
+      // For now, just highlight that a connection would be made
+    }
 
-    if (!hoverPt || hoverPole || hoverTree) return;
+    // Only show ghost pole if pole tool is active
+    if (!UIState.poleToolActive || !hoverPt || hoverPole || hoverTree) return;
     if (poles.some(p => p.x === hoverPt.x && p.z === hoverPt.z)) return;
 
     const h = UIState.currentHeight;
@@ -1666,22 +1756,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.addEventListener('contextmenu', e => {
     e.preventDefault();
-    // Trees feature removed; context menu no longer deletes trees.
-    
-    const pPick = pick(e, poleMeshes());
-    if (pPick) {
-      removePole(pPick);
-    }
+    // Right-click is disabled - use eraser tool instead
   });
 
   window.addEventListener('pointerdown', e => {
     if (e.shiftKey) return;
+    
+    // Ignore clicks on UI elements
+    if (e.target.closest('#toolPanel, #hud, #challengePanel, #scenariosPanel')) {
+      return;
+    }
 
     const pPick = pick(e, poleMeshes());
     if (pPick) {
       // Check if this is a challenge building (immovable)
       if (pPick.userData && pPick.userData.challengeBuilding) {
         return; // Don't allow dragging buildings
+      }
+      
+      // Don't start drag if eraser tool is active
+      if (UIState.eraserToolActive) {
+        clickStart = [e.clientX, e.clientY];
+        return;
       }
       
       drag = pPick;
@@ -1742,11 +1838,62 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const pPick = pick(e, poleMeshes());
+    let pPick = pick(e, poleMeshes());
+    
+    // In conductor-only mode, use larger hit radius for easier targeting
+    if (UIState.conductorToolActive && !UIState.poleToolActive && !pPick) {
+      // Find nearest pole within screen-space radius
+      mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+      
+      const clickRadius = 80; // pixels
+      let nearestPole = null;
+      let nearestDist = Infinity;
+      
+      poles.forEach(pole => {
+        const poleTop = new THREE.Vector3(pole.x, pole.base + pole.h, pole.z + terrainOffsetZ);
+        poleTop.project(camera);
+        
+        const screenX = (poleTop.x * 0.5 + 0.5) * window.innerWidth;
+        const screenY = (-poleTop.y * 0.5 + 0.5) * window.innerHeight;
+        
+        const dx = screenX - e.clientX;
+        const dy = screenY - e.clientY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < clickRadius && dist < nearestDist) {
+          nearestDist = dist;
+          nearestPole = pole.obj;
+        }
+      });
+      
+      if (nearestPole) {
+        pPick = nearestPole;
+      }
+    }
+    
+    // Handle pole hover highlighting
     if (pPick !== hoverPole) {
-      if (hoverPole) hoverPole.material = mPole;
+      if (hoverPole) {
+        // Don't reset material if this is the conductor start pole
+        if (!UIState.conductorStartPole || hoverPole !== UIState.conductorStartPole.obj) {
+          hoverPole.material = mPole;
+        }
+      }
       hoverPole = pPick;
-      if (hoverPole) hoverPole.material = mPoleHL;
+      if (hoverPole) {
+        // Always highlight on hover (unless eraser tool and not hovering a pole)
+        if (!UIState.eraserToolActive || pPick) {
+          hoverPole.material = mPoleHL;
+        }
+      }
+    }
+    
+    // Update conductor hover state for preview
+    if (UIState.conductorToolActive && UIState.conductorStartPole) {
+      const hoveredPole = pPick ? poles.find(p => p.obj === pPick) : null;
+      UIState.conductorHoverPole = hoveredPole;
+    } else {
+      UIState.conductorHoverPole = null;
     }
 
     mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
@@ -1771,6 +1918,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   window.addEventListener('pointerup', e => {
+    // Ignore clicks on UI elements
+    if (e.target.closest('#toolPanel, #hud, #challengePanel, #scenariosPanel')) {
+      clickStart = null; // Clear clickStart to prevent any action
+      return;
+    }
+    
     if (drag) {
       drag = null;
       controls.enabled = true;
@@ -1782,14 +1935,153 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (!clickStart) return;
     const [dx, dy] = [Math.abs(e.clientX - clickStart[0]), Math.abs(e.clientY - clickStart[1])];
-    clickStart = null;    
-    if (dx < 5 && dy < 5 && hoverPt) {
-      const h = UIState.currentHeight;
-      const base = hAt(hoverPt.x, hoverPt.z + terrainOffsetZ);
-      addPole(hoverPt.x, hoverPt.z, h);
-      updateGhost();
+    clickStart = null;
+    
+    // Only proceed if it's a click (not a drag)
+    if (dx < 5 && dy < 5) {
+      handleToolClick(e);
     }
   });
+  
+  function handleToolClick(e) {
+    // Ignore clicks on UI elements (tool panel, HUD, etc.)
+    if (e.target.closest('#toolPanel, #hud, #challengePanel, #scenariosPanel')) {
+      return;
+    }
+    
+    // Handle eraser tool
+    if (UIState.eraserToolActive) {
+      const pPick = pick(e, poleMeshes());
+      if (pPick) {
+        removePole(pPick);
+        return;
+      }
+      
+      // Check if clicking on a conductor
+      mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+      ray.setFromCamera(mouse, camera);
+      const spanLines = scene.children.filter(o => o.userData.span);
+      const spanHit = ray.intersectObjects(spanLines, true)[0];
+      
+      if (spanHit && spanHit.object.userData.span) {
+        // Find the poles this span connects
+        const spanA = spanHit.object.userData.a;
+        const spanB = spanHit.object.userData.b;
+        const poleA = poles.find(p => p.obj === spanA);
+        const poleB = poles.find(p => p.obj === spanB);
+        
+        if (poleA && poleB) {
+          removeSpan(poleA, poleB);
+        }
+      }
+      return;
+    }
+    
+    // Handle conductor-only tool
+    if (UIState.conductorToolActive && !UIState.poleToolActive) {
+      let pPick = pick(e, poleMeshes());
+      
+      // Use larger click radius in conductor mode
+      if (!pPick) {
+        mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+        
+        const clickRadius = 80; // pixels
+        let nearestPole = null;
+        let nearestDist = Infinity;
+        
+        poles.forEach(pole => {
+          const poleTop = new THREE.Vector3(pole.x, pole.base + pole.h, pole.z + terrainOffsetZ);
+          poleTop.project(camera);
+          
+          const screenX = (poleTop.x * 0.5 + 0.5) * window.innerWidth;
+          const screenY = (-poleTop.y * 0.5 + 0.5) * window.innerHeight;
+          
+          const dx = screenX - e.clientX;
+          const dy = screenY - e.clientY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist < clickRadius && dist < nearestDist) {
+            nearestDist = dist;
+            nearestPole = pole.obj;
+          }
+        });
+        
+        if (nearestPole) {
+          pPick = nearestPole;
+        }
+      }
+      
+      if (pPick) {
+        handleConductorToolClick(pPick);
+      }
+      return;
+    }
+    
+    // Handle pole-only tool or both tools together
+    if (UIState.poleToolActive && hoverPt) {
+      const h = UIState.currentHeight;
+      const base = hAt(hoverPt.x, hoverPt.z + terrainOffsetZ);
+      
+      // Get the last pole before adding the new one
+      const lastPole = poles.length > 0 ? poles[poles.length - 1] : null;
+      
+      addPole(hoverPt.x, hoverPt.z, h);
+      
+      // If both tools are active and there was a previous pole, auto-connect
+      if (UIState.conductorToolActive && lastPole) {
+        const newPole = poles[poles.length - 1];
+        addSpan(lastPole, newPole);
+      }
+      
+      updateGhost();
+    }
+  }
+  
+  function handleConductorToolClick(poleObj) {
+    const pole = poles.find(p => p.obj === poleObj);
+    if (!pole) return;
+    
+    if (!UIState.conductorStartPole) {
+      // First pole selected - store it
+      UIState.conductorStartPole = pole;
+      // Highlight the selected pole
+      poleObj.material = mPoleHL;
+    } else if (UIState.conductorStartPole === pole) {
+      // Clicked same pole - deselect
+      if (UIState.conductorStartPole.obj) {
+        UIState.conductorStartPole.obj.material = mPole;
+      }
+      UIState.conductorStartPole = null;
+      UIState.conductorHoverPole = null;
+    } else {
+      // Second pole selected - create or remove conductor
+      const startPole = UIState.conductorStartPole;
+      
+      if (hasSpan(startPole, pole)) {
+        // Span already exists - remove it
+        removeSpan(startPole, pole);
+        
+        // Reset selection completely after removing
+        if (UIState.conductorStartPole.obj) {
+          UIState.conductorStartPole.obj.material = mPole;
+        }
+        UIState.conductorStartPole = null;
+        UIState.conductorHoverPole = null;
+      } else {
+        // Create new span
+        addSpan(startPole, pole);
+        
+        // Keep selection active - make the second pole the new "from" pole
+        // This allows quick chaining: click A -> B -> C -> D without reselecting
+        if (UIState.conductorStartPole.obj) {
+          UIState.conductorStartPole.obj.material = mPole;
+        }
+        UIState.conductorStartPole = pole;
+        poleObj.material = mPoleHL;
+        UIState.conductorHoverPole = null;
+      }
+    }
+  }
   function clearAllDOMLabels() {
     // Clear grid labels
     document.querySelectorAll('.grid-label').forEach(label => {
@@ -1863,6 +2155,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     poles.forEach(p => scene.remove(p.obj));
     poles.length = 0;
+    spans.length = 0; // Clear the spans array
     scene.children.filter(o => o.userData.span).forEach(l => {
       l.geometry.dispose();
       scene.remove(l);
@@ -2257,6 +2550,9 @@ document.addEventListener('DOMContentLoaded', () => {
       updateLastPoleIndicator();
     }
     
+    // Update conductor hover halo
+    updateConductorHalo();
+    
     // Update clearance indicator label positions
     if (window.clearanceIndicators) {
       window.clearanceIndicators.forEach(indicator => {
@@ -2455,6 +2751,62 @@ document.addEventListener('DOMContentLoaded', () => {
     
     lastPoleIndicator.visible = true;
   }
+  
+  function updateConductorHalo() {
+    // Only show halo when conductor tool is active WITHOUT pole tool, and hovering near a pole
+    if (!UIState.conductorToolActive || UIState.poleToolActive || !hoverPole) {
+      conductorHalo.visible = false;
+      return;
+    }
+    
+    // Find the pole being hovered
+    const pole = poles.find(p => p.obj === hoverPole);
+    if (!pole) {
+      conductorHalo.visible = false;
+      return;
+    }
+    
+    // Calculate pulse animation
+    const currentTime = Date.now() * 0.004; // Faster pulse than last pole indicator
+    const pulse = Math.sin(currentTime);
+    
+    // Larger radius for easier targeting (3x pole radius)
+    const baseRadius = 3.0;
+    const scaleFactor = 1 + 0.2 * Math.abs(pulse); // 20% size variation
+    
+    // Create circle at pole top height
+    const poleTopY = pole.base + pole.h;
+    const segments = 32;
+    const points = [];
+    
+    for (let i = 0; i <= segments; i++) {
+      const angle = (i / segments) * Math.PI * 2;
+      const x = pole.x + Math.cos(angle) * baseRadius * scaleFactor;
+      const z = pole.z + terrainOffsetZ + Math.sin(angle) * baseRadius * scaleFactor;
+      points.push(new THREE.Vector3(x, poleTopY, z));
+    }
+    
+    // Update geometry
+    if (conductorHalo.geometry) {
+      conductorHalo.geometry.dispose();
+    }
+    conductorHalo.geometry = new THREE.BufferGeometry().setFromPoints(points);
+    
+    // Pulse opacity for glowing effect
+    const opacity = 0.6 + 0.4 * Math.abs(pulse);
+    conductorHalo.material.opacity = opacity;
+    
+    // Change color based on conductor state
+    if (UIState.conductorStartPole) {
+      // Second pole selection - show different color
+      conductorHalo.material.color.setHex(0xffaa00); // Orange
+    } else {
+      // First pole selection - cyan
+      conductorHalo.material.color.setHex(0x00ffe7);
+    }
+    
+    conductorHalo.visible = true;
+  }
 
   function updatePoleHeightLabels() {
     // Clear existing labels
@@ -2520,14 +2872,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     sagCalculationObjects.length = 0;
 
-    if (!UIState.showSagCalculations || poles.length < 2) {
-      return; // Sag calculations are disabled or not enough poles
+    if (!UIState.showSagCalculations || spans.length === 0) {
+      return; // Sag calculations are disabled or no spans
     }
 
     // Create sag visualization for each span
-    for (let i = 1; i < poles.length; i++) {
-      const poleA = poles[i-1];
-      const poleB = poles[i];
+    spans.forEach(span => {
+      const poleA = span.a;
+      const poleB = span.b;
 
       try {
         // Calculate straight line between poles at crossarm height
@@ -2633,7 +2985,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (error) {
         console.warn('Error creating sag calculation for span:', error);
       }
-    }
+    });
   }
 
   function copyScenarioLink() {
