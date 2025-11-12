@@ -2,7 +2,7 @@ const THREE = window.THREE;
 
 export let terrainOffsetZ = 0;
 
-export function buildTerrain(scene, urlParams, customPoles, terrainSel, environmentSel, SEG, hAt, addGridLines, addDefaultTrees, updateEnvironment) {
+export function buildTerrain(scene, urlParams, customPoles, terrainSel, environmentSel, SEG, hAt, addGridLines, addDefaultTrees, updateEnvironment, elevationPoints = [], terrainWidth = 20) {
   let terrain = null;
 
   if (window.terrain) {
@@ -11,15 +11,18 @@ export function buildTerrain(scene, urlParams, customPoles, terrainSel, environm
     window.terrain = null;
   }
 
-  const gridSizeX = customPoles.length > 0 ? parseInt(urlParams.get('size-x')) || 20 : parseInt(urlParams.get('size-x')) || 100;
+  // Determine terrain width: use elevationPoints if available, otherwise customPoles
+  const gridSizeX = elevationPoints.length > 0 ? terrainWidth : 
+                    (customPoles.length > 0 ? parseInt(urlParams.get('size-x')) || 20 : parseInt(urlParams.get('size-x')) || 100);
   const gridSizeY = parseInt(urlParams.get('size-y')) || 100;
   const maxPoleDistance = customPoles.length > 0 ? Math.max(...customPoles.map((p) => p.z)) : 0;
+  const maxElevationDistance = elevationPoints.length > 0 ? Math.max(...elevationPoints.map((p) => p.z)) : 0;
 
-  const terrainWidth = gridSizeX;
-  const terrainDepth = Math.max(gridSizeY, maxPoleDistance + 40);
+  const finalTerrainWidth = gridSizeX;
+  const terrainDepth = Math.max(gridSizeY, maxPoleDistance + 40, maxElevationDistance + 40);
   terrainOffsetZ = 0;
 
-  const geometry = new THREE.PlaneGeometry(terrainWidth, terrainDepth, SEG, SEG);
+  const geometry = new THREE.PlaneGeometry(finalTerrainWidth, terrainDepth, SEG, SEG);
   geometry.rotateX(-Math.PI / 2);
   const material = new THREE.MeshStandardMaterial({
     color: environmentSel && environmentSel.value === 'desert' ? 0xd2b48c : 0x5ca55c,
@@ -36,7 +39,7 @@ export function buildTerrain(scene, urlParams, customPoles, terrainSel, environm
     const x = positions.getX(i);
     const localZ = positions.getZ(i);
     const worldZ = localZ + terrain.position.z;
-    const elevation = customPoles.length > 0 ? hAt(x, worldZ) : 0;
+    const elevation = (customPoles.length > 0 || elevationPoints.length > 0) ? hAt(x, worldZ) : 0;
     positions.setY(i, elevation);
   }
 

@@ -295,21 +295,27 @@ GridScaper supports URL parameters to customize the simulation upon loading. Par
 * **Grid Dimensions** (Note: size-x, size-y appear in url-parameters-guide.md but are not explicitly used in index.html to define terrain/grid plane size; terrain size is fixed in index.html):
   * While the guide mentions size-x and size-y, the index.html currently uses a fixed SIZE for terrain generation. Pole parameters will work within this fixed terrain.
 * **Pole Configuration**:
-  * `poles-distances`: Comma-separated list of distances along the Z-axis for poles.
-  * `poles-heights`: Comma-separated list of heights for each pole (in feet).
-  * `poles-elevations`: Comma-separated list of ground elevations at each pole.
+  * `elevation`: **New simplified parameter** - Comma-separated list of ground elevations for terrain profile only (creates rolling terrain without placing poles).
+  * `poles-distances`: (Legacy) Comma-separated list of distances along the Z-axis for poles.
+  * `poles-heights`: (Legacy) Comma-separated list of heights for each pole (in feet).
+  * `poles-elevations`: (Legacy) Comma-separated list of ground elevations at each pole.
 
 **Important Notes for URL Parameters**:
 
-* All three pole parameters (poles-distances, poles-heights, and poles-elevations) must be provided together and have the same number of values.
+* **Simplified `elevation` parameter**: Creates a terrain elevation profile with points spaced every 10 feet. Does NOT place poles - you can add poles interactively after the terrain loads.
+* **Optional `width` parameter**: Sets the terrain width in feet (default: 20). Works with the `elevation` parameter to control terrain dimensions.
+* **Legacy parameters**: All three pole parameters (poles-distances, poles-heights, and poles-elevations) must be provided together and have the same number of values. These DO place poles with the terrain.
+* The simplified `elevation` parameter takes precedence over legacy parameters if both are present.
 * Poles are positioned along the Z-axis.
 * The terrain will automatically adjust to create a smooth sloped surface through all pole locations defined by the elevations.
 * You can still interact with the simulation (add/remove poles, adjust tension, etc.) after it's initialized with URL parameters.
 
 **Examples**:
 
-* Basic Line Profile with Three Poles: [https://danmaps.github.io/GridScaper/?poles-distances=0,20,40&poles-heights=10,15,12&poles-elevations=0,5,2](https://danmaps.github.io/GridScaper/?poles-distances=0,20,40&poles-heights=10,15,12&poles-elevations=0,5,2)
-* Valley Crossing: [https://danmaps.github.io/GridScaper/?poles-distances=0,25,50&poles-heights=20,25,20&poles-elevations=10,0,10](https://danmaps.github.io/GridScaper/?poles-distances=0,25,50&poles-heights=20,25,20&poles-elevations=10,0,10)
+* Rolling Hills terrain (new simplified format - terrain only, no poles): [https://danmaps.github.io/GridScaper/?elevation=0,10,0,20,10,5,0,5,10,20,30,20,10,5,0](https://danmaps.github.io/GridScaper/?elevation=0,10,0,20,10,5,0,5,10,20,30,20,10,5,0)
+* Custom width terrain (40ft wide): [https://danmaps.github.io/GridScaper/?elevation=0,10,0,20,10,5,0,5,10,20,30,20,10,5,0&width=40](https://danmaps.github.io/GridScaper/?elevation=0,10,0,20,10,5,0,5,10,20,30,20,10,5,0&width=40)
+* Basic Line Profile with Three Poles (legacy - includes poles): [https://danmaps.github.io/GridScaper/?poles-distances=0,20,40&poles-heights=10,15,12&poles-elevations=0,5,2](https://danmaps.github.io/GridScaper/?poles-distances=0,20,40&poles-heights=10,15,12&poles-elevations=0,5,2)
+* Valley Crossing (legacy - includes poles): [https://danmaps.github.io/GridScaper/?poles-distances=0,25,50&poles-heights=20,25,20&poles-elevations=10,0,10](https://danmaps.github.io/GridScaper/?poles-distances=0,25,50&poles-heights=20,25,20&poles-elevations=10,0,10)
 
 ### JSON Export Format
 

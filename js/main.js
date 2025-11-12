@@ -196,6 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!exists) {
       spans.push({ a: poleA, b: poleB, type: 'pole' });
       rebuild();
+      updateCrossarmOrientations();
       history.captureState();
     }
   }
@@ -208,6 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (index !== -1) {
       spans.splice(index, 1);
       rebuild();
+      updateCrossarmOrientations();
       history.captureState();
     }
   }
@@ -252,12 +254,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const mBird = materials.bird; // Bird material
   const mGhost = materials.ghost;
 
-  // Birds collection (re-added after refactor)
   const birds = [];
-  // Hover state trackers (trees removed but keep variable to avoid reference errors)
   let hoverPole = null;
   let hoverPt = null;
-  let hoverTree = null;
+  let hoverSpan = null; // Track hovered conductor for eraser tool highlighting
 
   // Labels / annotation collections
   const poleHeightLabels = [];
@@ -314,9 +314,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const poleDistances = urlParams.get('poles-distances')?.split(',').map(Number).filter(v => !isNaN(v)) || [];
   const poleHeights = urlParams.get('poles-heights')?.split(',').map(Number).filter(v => !isNaN(v)) || [];
   const poleElevations = urlParams.get('poles-elevations')?.split(',').map(Number).filter(v => !isNaN(v)) || [];
+  
+  // New simplified elevation parameter (works standalone with default 10ft spacing)
+  const elevationParam = urlParams.get('elevation')?.split(',').map(Number).filter(v => !isNaN(v)) || [];
+  const elevationSpacing = 10; // Default 10 feet between elevation points
+  
+  // Width parameter for terrain (default 20 feet)
+  const widthParam = urlParams.get('width');
+  const terrainWidth = widthParam && !isNaN(Number(widthParam)) ? Number(widthParam) : 20;
+  
   const clearanceThresholdParam = urlParams.get('clearanceThreshold');
 
   const customPoles = [];
+  const elevationPoints = []; // For terrain elevation profile only (not poles)
   let useElevations = [];
 
   // Set clearance threshold from URL parameter if provided
@@ -372,7 +382,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  if (poleDistances.length && poleHeights.length) {
+  // Handle simplified elevation parameter (creates terrain profile only, no poles)
+  if (elevationParam.length > 0) {
+    // Use simplified elevation parameter for terrain elevation profile
+    for (let i = 0; i < elevationParam.length; i++) {
+      elevationPoints.push({
+        x: 0, 
+        z: i * elevationSpacing, 
+        elev: elevationParam[i]
+      });
+    }
+  } 
+  // Fallback to legacy parameters for backward compatibility (creates both terrain and poles)
+  else if (poleDistances.length && poleHeights.length) {
     while (poleHeights.length < poleDistances.length) poleHeights.push(10);
     useElevations = poleElevations;
     while (useElevations.length < poleDistances.length) useElevations.push(0);
@@ -387,18 +409,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Custom ground function for sloped surface through pole elevations
+  // Custom ground function for sloped surface through elevation points
   let customGround = null;
   let gisElevationSurface = null; // For GIS-imported elevation surface
-  if (customPoles.length > 0) {
+  
+  // Use elevation points if available (from elevation parameter)
+  const terrainProfile = elevationPoints.length > 0 ? elevationPoints : customPoles;
+  
+  if (terrainProfile.length > 0) {
     customGround = (x, z) => {
       const localZ = z - terrainOffsetZ;
-      if (localZ <= customPoles[0].z) return customPoles[0].elev;
-      if (localZ >= customPoles[customPoles.length - 1].z) return customPoles[customPoles.length - 1].elev;
-      for (let i = 1; i < customPoles.length; i++) {
-        if (localZ <= customPoles[i].z) {
-          const t = (localZ - customPoles[i - 1].z) / (customPoles[i].z - customPoles[i - 1].z);
-          return customPoles[i - 1].elev * (1 - t) + customPoles[i].elev * t;
+      if (localZ <= terrainProfile[0].z) return terrainProfile[0].elev;
+      if (localZ >= terrainProfile[terrainProfile.length - 1].z) return terrainProfile[terrainProfile.length - 1].elev;
+      for (let i = 1; i < terrainProfile.length; i++) {
+        if (localZ <= terrainProfile[i].z) {
+          const t = (localZ - terrainProfile[i - 1].z) / (terrainProfile[i].z - terrainProfile[i - 1].z);
+          return terrainProfile[i - 1].elev * (1 - t) + terrainProfile[i].elev * t;
         }
       }
       return 0;
@@ -819,6 +845,15 @@ document.addEventListener('DOMContentLoaded', () => {
     challengeState.targetCircle.userData.challengeIndicator = true;
     scene.add(challengeState.targetCircle);
     
+    // Calculate distance between substation and customer for responsive budget
+    const dx = challengeState.customerBuilding.x - challengeState.substationBuilding.x;
+    const dz = challengeState.customerBuilding.z - challengeState.substationBuilding.z;
+    const totalDistance = Math.sqrt(dx * dx + dz * dz);
+    
+    // Set budget based on distance: approximately $70-75 per foot of distance
+    // This gives roughly $10,000 for a 140ft span (like the rolling hills scenario)
+    UIState.challengeBudget = Math.round(totalDistance * 72);
+    
     // Activate challenge mode
     challengeState.active = true;
     challengeState.isPowered = false;
@@ -1127,7 +1162,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Use the imported buildTerrain function from terrain.js
   clearSceneElements();
-  const terrain = importedBuildTerrain(scene, urlParams, customPoles, null, null, SEG, hAt, addGridLines, null, null);
+  const terrain = importedBuildTerrain(scene, urlParams, customPoles, null, null, SEG, hAt, addGridLines, null, null, elevationPoints, terrainWidth);
   const currentDarkMode = isDarkModeActive();
   scene.background = currentDarkMode ? new THREE.Color('#0a1014') : new THREE.Color(0x87ceeb);
   updateSceneLabelStylesForDarkMode(currentDarkMode);
@@ -1414,6 +1449,9 @@ document.addEventListener('DOMContentLoaded', () => {
     oldSpans.forEach(l => { l.geometry.dispose(); scene.remove(l); });
     // Clear previous clearance indicators so we don't accumulate duplicates
     clearClearanceIndicators();
+    
+    // Reset hover span since we're redrawing all spans
+    hoverSpan = null;
 
     // Early exit when no poles (still update stats/emissive state)
     if (poles.length === 0) {
@@ -1692,7 +1730,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Only show ghost pole if pole tool is active
-    if (!UIState.poleToolActive || !hoverPt || hoverPole || hoverTree) return;
+    if (!UIState.poleToolActive || !hoverPt || hoverPole) return;
     if (poles.some(p => p.x === hoverPt.x && p.z === hoverPt.z)) return;
 
     const h = UIState.currentHeight;
@@ -1885,6 +1923,49 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!UIState.eraserToolActive || pPick) {
           hoverPole.material = mPoleHL;
         }
+      }
+    }
+    
+    // Handle conductor hover highlighting for eraser tool
+    if (UIState.eraserToolActive && !pPick) {
+      // Check if hovering over a conductor
+      mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+      ray.setFromCamera(mouse, camera);
+      const spanLines = scene.children.filter(o => o.userData.span);
+      const spanHit = ray.intersectObjects(spanLines, true)[0];
+      
+      if (spanHit && spanHit.object.userData.span) {
+        const hitSpan = spanHit.object;
+        
+        // If hovering a different span, reset the previous one
+        if (hoverSpan && hoverSpan !== hitSpan) {
+          hoverSpan.material = mGood;
+        }
+        
+        // Highlight the hovered span
+        if (hoverSpan !== hitSpan) {
+          hoverSpan = hitSpan;
+          // Create highlight material based on dark mode
+          const isDark = document.body.classList.contains('dark-mode');
+          const highlightColor = isDark ? 0x00ffe7 : 0x4169e1; // Light blue for dark, royal blue for light
+          const highlightMaterial = new THREE.LineBasicMaterial({ 
+            color: highlightColor,
+            linewidth: 2
+          });
+          hoverSpan.material = highlightMaterial;
+        }
+      } else {
+        // Not hovering any span - reset if we were
+        if (hoverSpan) {
+          hoverSpan.material = mGood;
+          hoverSpan = null;
+        }
+      }
+    } else {
+      // Not in eraser mode or hovering a pole - reset any highlighted span
+      if (hoverSpan) {
+        hoverSpan.material = mGood;
+        hoverSpan = null;
       }
     }
     
@@ -2995,22 +3076,38 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // Serialize poles if any exist
       if (poles.length > 0) {
-        // Calculate distances from first pole
-        const distances = poles.map((pole, i) => {
-          if (i === 0) return 0;
-          const dx = pole.x - poles[0].x;
-          const dz = pole.z - poles[0].z;
-          return Math.round(Math.sqrt(dx * dx + dz * dz));
+        // Check if poles are evenly spaced at 10ft intervals along x=0 with 20ft height
+        // If so, use simplified elevation parameter
+        const allAtX0 = poles.every(pole => Math.round(pole.x) === 0);
+        const allHeight20 = poles.every(pole => Math.round(pole.h) === 20);
+        const evenlySpaced = poles.every((pole, i) => {
+          if (i === 0) return Math.round(pole.z) === 0;
+          return Math.round(pole.z) === i * 10;
         });
-        params.set('poles-distances', distances.join(','));
         
-        // Heights
-        const heights = poles.map(pole => Math.round(pole.h));
-        params.set('poles-heights', heights.join(','));
-        
-        // Elevations
-        const elevations = poles.map(pole => Math.round(pole.base));
-        params.set('poles-elevations', elevations.join(','));
+        if (allAtX0 && allHeight20 && evenlySpaced) {
+          // Use simplified elevation parameter
+          const elevations = poles.map(pole => Math.round(pole.base));
+          params.set('elevation', elevations.join(','));
+        } else {
+          // Use legacy detailed parameters
+          // Calculate distances from first pole
+          const distances = poles.map((pole, i) => {
+            if (i === 0) return 0;
+            const dx = pole.x - poles[0].x;
+            const dz = pole.z - poles[0].z;
+            return Math.round(Math.sqrt(dx * dx + dz * dz));
+          });
+          params.set('poles-distances', distances.join(','));
+          
+          // Heights
+          const heights = poles.map(pole => Math.round(pole.h));
+          params.set('poles-heights', heights.join(','));
+          
+          // Elevations
+          const elevations = poles.map(pole => Math.round(pole.base));
+          params.set('poles-elevations', elevations.join(','));
+        }
       }
       
       // Add current UI state

@@ -11,7 +11,7 @@ export const UIState = {
   showClearanceBuffers: false,
   // Challenge mode state
   challengeMode: false,
-  challengeBudget: 5500,
+  challengeBudget: 5500, // Default fallback; actual budget is calculated based on distance in enterChallengeMode()
   challengeSpent: 0,
   costPerPole: 1500,
   costPerFoot: 10,
