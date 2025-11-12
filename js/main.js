@@ -1550,7 +1550,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const distance = Math.sqrt(dx * dx + dz * dz);
         
         if (distance > UIState.maxSpanLength) {
-          alert(`Cannot place pole here!\n\nSpan length: ${Math.round(distance)}ft\nMax allowed: ${UIState.maxSpanLength}ft\n\nMove closer to the previous pole.`);
+          // Silently prevent placement - don't show disruptive popup
           return;
         }
       }
@@ -1853,12 +1853,54 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         if (hit) {
-          pole.x = SNAP(hit.point.x);
-          pole.z = SNAP(hit.point.z - terrainOffsetZ);
+          const newX = SNAP(hit.point.x);
+          const newZ = SNAP(hit.point.z - terrainOffsetZ);
           
-          const base = hAt(pole.x, pole.z + terrainOffsetZ);
-          pole.base = base;
-          pole.obj.position.set(pole.x, base + pole.h / 2, pole.z + terrainOffsetZ);
+          // Check if any connected spans would exceed max span length
+          let validMove = true;
+          if (challengeState.active && UIState.maxSpanLength) {
+            const connectedSpans = spans.filter(s => s.a === pole || s.b === pole);
+            
+            // Check connected spans to other poles
+            for (const span of connectedSpans) {
+              const otherPole = span.a === pole ? span.b : span.a;
+              const dx = newX - otherPole.x;
+              const dz = newZ - otherPole.z;
+              const distance = Math.sqrt(dx * dx + dz * dz);
+              
+              if (distance > UIState.maxSpanLength) {
+                validMove = false;
+                break;
+              }
+            }
+            
+            // If this is the first pole, check distance to substation
+            if (validMove && challengeState.substationBuilding && poles.length > 0 && poles[0] === pole) {
+              const dx = newX - challengeState.substationBuilding.x;
+              const dz = newZ - challengeState.substationBuilding.z;
+              const distance = Math.sqrt(dx * dx + dz * dz);
+              
+              if (distance > UIState.maxSpanLength) {
+                validMove = false;
+              }
+            }
+          }
+          
+          if (validMove) {
+            pole.x = newX;
+            pole.z = newZ;
+            
+            const base = hAt(pole.x, pole.z + terrainOffsetZ);
+            pole.base = base;
+            pole.obj.position.set(pole.x, base + pole.h / 2, pole.z + terrainOffsetZ);
+          } else {
+            // Restore to drag start position if move is invalid
+            pole.x = dragStartPos.x;
+            pole.z = dragStartPos.z;
+            const base = hAt(pole.x, pole.z + terrainOffsetZ);
+            pole.base = base;
+            pole.obj.position.set(pole.x, base + pole.h / 2, pole.z + terrainOffsetZ);
+          }
         }
       } else if (dragMode === 'height') {
         // Height dragging doesn't need terrain intersection - just use mouse delta
@@ -2006,6 +2048,50 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     if (drag) {
+      // Validate final pole position in challenge mode
+      if (dragMode === 'position' && challengeState.active && UIState.maxSpanLength) {
+        const pole = poles.find(p => p.obj === drag);
+        if (pole) {
+          let validMove = true;
+          const connectedSpans = spans.filter(s => s.a === pole || s.b === pole);
+          
+          // Check connected spans to other poles
+          for (const span of connectedSpans) {
+            const otherPole = span.a === pole ? span.b : span.a;
+            const dx = pole.x - otherPole.x;
+            const dz = pole.z - otherPole.z;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+            
+            if (distance > UIState.maxSpanLength) {
+              validMove = false;
+              break;
+            }
+          }
+          
+          // If this is the first pole, check distance to substation
+          if (validMove && challengeState.substationBuilding && poles.length > 0 && poles[0] === pole) {
+            const dx = pole.x - challengeState.substationBuilding.x;
+            const dz = pole.z - challengeState.substationBuilding.z;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+            
+            if (distance > UIState.maxSpanLength) {
+              validMove = false;
+            }
+          }
+          
+          // Restore original position if invalid
+          if (!validMove) {
+            pole.x = dragStartPos.x;
+            pole.z = dragStartPos.z;
+            const base = hAt(pole.x, pole.z + terrainOffsetZ);
+            pole.base = base;
+            pole.obj.position.set(pole.x, base + pole.h / 2, pole.z + terrainOffsetZ);
+            rebuild();
+            updateCrossarmOrientations();
+          }
+        }
+      }
+      
       drag = null;
       controls.enabled = true;
       updateLastPoleIndicator(); // Update indicator after drag operation completes
