@@ -59,12 +59,26 @@ document.addEventListener('DOMContentLoaded', () => {
     
     captureState() {
       // Create a deep copy of current poles state
-      const state = poles.map(p => ({
+      const polesState = poles.map(p => ({
+        id: p.id,
         x: p.x,
         z: p.z,
         h: p.h,
         base: p.base
       }));
+      
+      // Create a deep copy of current spans state
+      // Store pole IDs instead of object references
+      const spansState = spans.map(s => ({
+        aId: s.a.id,
+        bId: s.b.id,
+        type: s.type
+      }));
+      
+      const state = {
+        poles: polesState,
+        spans: spansState
+      };
       
       // Remove any future states if we're not at the end
       if (this.currentIndex < this.states.length - 1) {
@@ -113,8 +127,11 @@ document.addEventListener('DOMContentLoaded', () => {
       poles.forEach(p => scene.remove(p.obj));
       poles.length = 0;
       
+      // Clear current spans
+      spans.length = 0;
+      
       // Restore poles from state
-      state.forEach(poleData => {
+      state.poles.forEach(poleData => {
         const mesh = new THREE.Mesh(poleGeo, mPole);
         mesh.scale.y = poleData.h / BASE_H;
         mesh.position.set(poleData.x, poleData.base + poleData.h / 2, poleData.z + terrainOffsetZ);
@@ -136,6 +153,20 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update nextPoleId to avoid conflicts
         if (poleData.id && poleData.id >= nextPoleId) {
           nextPoleId = poleData.id + 1;
+        }
+      });
+      
+      // Restore spans from state
+      state.spans.forEach(spanData => {
+        const poleA = poles.find(p => p.id === spanData.aId);
+        const poleB = poles.find(p => p.id === spanData.bId);
+        
+        if (poleA && poleB) {
+          spans.push({
+            a: poleA,
+            b: poleB,
+            type: spanData.type
+          });
         }
       });
       
@@ -2028,8 +2059,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function addPole(x, z, h) {
-    // Prevent placing pole too close to existing poles (within 1 ft radius)
-    const minDistance = 1.0;
+    // Prevent placing pole at same location or too close to existing poles
+    const minDistance = 0.5; // Less than 0.5 ft is essentially the same spot
     const tooClose = poles.some(p => {
       const dx = p.x - x;
       const dz = p.z - z;
@@ -2382,12 +2413,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     
-    // Always set clickStart for non-dragging tools (for click detection)
-    // This includes: eraser, and conductor-only mode
-    // Inspect tool allows alt-drag for resizing
-    if (UIState.eraserToolActive || 
-        (UIState.inspectToolActive && !e.altKey) ||
-        (UIState.conductorToolActive && !UIState.poleToolActive)) {
+    // Always set clickStart for conductor-only mode (for click detection)
+    if (UIState.conductorToolActive && !UIState.poleToolActive) {
       clickStart = [e.clientX, e.clientY];
       return;
     }
@@ -2398,12 +2425,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return; // Don't allow dragging buildings
       }
       
-      // Allow alt-drag for height adjustment even in inspect mode
-      if (UIState.inspectToolActive && !e.altKey) {
-        clickStart = [e.clientX, e.clientY];
-        return;
-      }
-      
+      // Store potential drag start - will determine if it's a drag or click on pointerup
       drag = pPick;
       startY = e.clientY;
       let startX = e.clientX; // Needed to add declaration
@@ -2420,6 +2442,11 @@ document.addEventListener('DOMContentLoaded', () => {
       birds.length = 0;
 
       dragMode = e.altKey ? 'height' : 'position';
+      
+      // Store click start for inspect/eraser tool detection
+      if (UIState.inspectToolActive || UIState.eraserToolActive) {
+        clickStart = [e.clientX, e.clientY];
+      }
       return;
     }
     clickStart = [e.clientX, e.clientY];
@@ -2662,34 +2689,56 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     if (drag) {
-      // Validate final pole position in challenge mode
-      if (dragMode === 'position' && challengeState.active && UIState.maxSpanLength) {
+      // Validate final pole position when drag ends
+      if (dragMode === 'position') {
         const pole = poles.find(p => p.obj === drag);
         if (pole) {
           let validMove = true;
-          const connectedSpans = spans.filter(s => s.a === pole || s.b === pole);
+          let invalidReason = '';
           
-          // Check connected spans to other poles
-          for (const span of connectedSpans) {
-            const otherPole = span.a === pole ? span.b : span.a;
-            const dx = pole.x - otherPole.x;
-            const dz = pole.z - otherPole.z;
+          // Check if too close to another pole
+          const minDistance = 0.5;
+          const tooClose = poles.some(p => {
+            if (p === pole) return false; // Don't check against itself
+            const dx = p.x - pole.x;
+            const dz = p.z - pole.z;
             const distance = Math.sqrt(dx * dx + dz * dz);
-            
-            if (distance > UIState.maxSpanLength) {
-              validMove = false;
-              break;
-            }
+            return distance < minDistance;
+          });
+          
+          if (tooClose) {
+            validMove = false;
+            invalidReason = '⚠️ Pole too close to existing pole';
           }
           
-          // If this is the first pole, check distance to substation
-          if (validMove && challengeState.substationBuilding && poles.length > 0 && poles[0] === pole) {
-            const dx = pole.x - challengeState.substationBuilding.x;
-            const dz = pole.z - challengeState.substationBuilding.z;
-            const distance = Math.sqrt(dx * dx + dz * dz);
+          // Check span length limits in challenge mode
+          if (validMove && challengeState.active && UIState.maxSpanLength) {
+            const connectedSpans = spans.filter(s => s.a === pole || s.b === pole);
             
-            if (distance > UIState.maxSpanLength) {
-              validMove = false;
+            // Check connected spans to other poles
+            for (const span of connectedSpans) {
+              const otherPole = span.a === pole ? span.b : span.a;
+              const dx = pole.x - otherPole.x;
+              const dz = pole.z - otherPole.z;
+              const distance = Math.sqrt(dx * dx + dz * dz);
+              
+              if (distance > UIState.maxSpanLength) {
+                validMove = false;
+                invalidReason = `⚠️ Span too long (${distance.toFixed(0)}ft > ${UIState.maxSpanLength}ft max)`;
+                break;
+              }
+            }
+            
+            // If this is the first pole, check distance to substation
+            if (validMove && challengeState.substationBuilding && poles.length > 0 && poles[0] === pole) {
+              const dx = pole.x - challengeState.substationBuilding.x;
+              const dz = pole.z - challengeState.substationBuilding.z;
+              const distance = Math.sqrt(dx * dx + dz * dz);
+              
+              if (distance > UIState.maxSpanLength) {
+                validMove = false;
+                invalidReason = `⚠️ Too far from substation (${distance.toFixed(0)}ft > ${UIState.maxSpanLength}ft max)`;
+              }
             }
           }
           
@@ -2702,16 +2751,44 @@ document.addEventListener('DOMContentLoaded', () => {
             pole.obj.position.set(pole.x, base + pole.h / 2, pole.z + terrainOffsetZ);
             rebuild();
             updateCrossarmOrientations();
+            
+            // Show toast notification
+            if (invalidReason) {
+              showToast(invalidReason, 'warning', 2000);
+            }
           }
         }
       }
+      
+      // Check if this was a click (not a drag)
+      const wasDragged = dragMode === 'position' && 
+                        clickStart && 
+                        (Math.abs(e.clientX - clickStart[0]) > 5 || Math.abs(e.clientY - clickStart[1]) > 5);
+      
+      const shouldInspect = UIState.inspectToolActive && clickStart && !wasDragged;
+      const shouldErase = UIState.eraserToolActive && clickStart && !wasDragged;
+      const draggedPole = drag; // Store before clearing
       
       drag = null;
       controls.enabled = true;
       updateLastPoleIndicator(); // Update indicator after drag operation completes
       
       // Capture state after drag (height or position change)
-      history.captureState();
+      if (wasDragged || dragMode === 'height') {
+        history.captureState();
+      }
+      
+      // If in inspect mode and didn't drag, inspect the pole
+      if (shouldInspect && draggedPole) {
+        inspectPole(draggedPole);
+      }
+      
+      // If in eraser mode and didn't drag, delete the pole
+      if (shouldErase && draggedPole) {
+        removePole(draggedPole);
+      }
+      
+      clickStart = null;
       return;
     }
     if (!clickStart) return;
@@ -4830,23 +4907,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const connectionCount = spanData.length;
       diagramTitle.textContent = `Pole #${pole.id} (${connectionCount} connection${connectionCount !== 1 ? 's' : ''})`;
     }
-    
-    // Show data for first two connections (legacy fields)
-    if (spanData.length > 0) {
-      elements.inspectLeftAngle.textContent = `${spanData[0].angle.degrees.toFixed(2)}°`;
-      elements.inspectUpstreamDistance.textContent = `${spanData[0].distance.toFixed(1)} ft`;
-    } else {
-      elements.inspectLeftAngle.textContent = 'No conductor';
-      elements.inspectUpstreamDistance.textContent = '-';
-    }
-    
-    if (spanData.length > 1) {
-      elements.inspectRightAngle.textContent = `${spanData[1].angle.degrees.toFixed(2)}°`;
-      elements.inspectDownstreamDistance.textContent = `${spanData[1].distance.toFixed(1)} ft`;
-    } else {
-      elements.inspectRightAngle.textContent = 'No conductor';
-      elements.inspectDownstreamDistance.textContent = '-';
-    }
   }
   
   function drawInspectionDiagram(pole, spanData) {
@@ -4861,11 +4921,8 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, width, height);
     
-    // Set up drawing style
-    ctx.strokeStyle = '#00ffe7';
-    ctx.fillStyle = '#00ffe7';
-    ctx.lineWidth = 2;
-    ctx.font = '12px Consolas, monospace';
+    // Split canvas into top and bottom halves
+    const halfHeight = height / 2;
     
     // Draw grid
     ctx.strokeStyle = '#222';
@@ -4883,76 +4940,132 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.stroke();
     }
     
-    // Pole position (center of canvas, zoomed in on top)
-    const poleX = width / 2;
-    const poleTopY = height / 2; // Center vertically for zoomed view
-    const poleVisibleHeight = 80; // Show less of the pole (zoomed in)
-    const poleBaseY = poleTopY + poleVisibleHeight;
+    // === TOP HALF: TOP VIEW (Horizontal Layout) ===
+    
+    // Pole position for top view (center of top half)
+    const topPoleX = width / 2;
+    const topPoleY = halfHeight / 2;
+    
+    // Draw pole (top view - circle)
+    ctx.fillStyle = '#00ffe7';
+    ctx.beginPath();
+    ctx.arc(topPoleX, topPoleY, 6, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Label: TOP VIEW
+    ctx.fillStyle = '#888';
+    ctx.font = 'bold 10px Consolas, monospace';
+    ctx.fillText('TOP VIEW', 10, 15);
+    
+    // Draw compass directions
+    ctx.fillStyle = '#555';
+    ctx.font = '10px Consolas, monospace';
+    ctx.fillText('N', topPoleX - 4, topPoleY - 55);
+    ctx.fillText('S', topPoleX - 4, topPoleY + 65);
+    ctx.fillText('E', topPoleX + 55, topPoleY + 4);
+    ctx.fillText('W', topPoleX - 60, topPoleY + 4);
+    
+    // Draw conductors in top view (actual horizontal directions)
+    const topSpanLength = 60;
+    const colors = ['#ff6b6b', '#4ade80', '#fbbf24', '#a78bfa', '#f472b6', '#60a5fa'];
+    
+    spanData.forEach((span, index) => {
+      const color = colors[index % colors.length];
+      
+      // Calculate horizontal direction
+      const dx = span.pole.x - pole.x;
+      const dz = span.pole.z - pole.z;
+      const horizontalAngle = Math.atan2(-dz, dx); // Negative dz because canvas Y is inverted
+      
+      const endX = topPoleX + topSpanLength * Math.cos(horizontalAngle);
+      const endY = topPoleY + topSpanLength * Math.sin(horizontalAngle);
+      
+      // Draw conductor line
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(topPoleX, topPoleY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+      
+      // Distance label
+      ctx.fillStyle = color;
+      ctx.font = 'bold 10px Consolas, monospace';
+      const labelDist = topSpanLength + 10;
+      const labelX = topPoleX + labelDist * Math.cos(horizontalAngle);
+      const labelY = topPoleY + labelDist * Math.sin(horizontalAngle);
+      ctx.fillText(`${span.distance.toFixed(0)}ft`, labelX - 15, labelY + 4);
+    });
+    
+    // Draw divider line
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, halfHeight);
+    ctx.lineTo(width, halfHeight);
+    ctx.stroke();
+    
+    // === BOTTOM HALF: SIDE VIEW (Vertical Angles) ===
+    
+    // Pole position for side view
+    const sidePoleX = width / 2;
+    const sidePoleTopY = halfHeight + halfHeight / 2;
+    const poleVisibleHeight = 80;
+    const sidePoleBaseY = sidePoleTopY + poleVisibleHeight;
     
     // Draw horizontal reference line
     ctx.strokeStyle = '#444';
     ctx.lineWidth = 1;
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
-    ctx.moveTo(50, poleTopY);
-    ctx.lineTo(width - 50, poleTopY);
+    ctx.moveTo(40, sidePoleTopY);
+    ctx.lineTo(width - 40, sidePoleTopY);
     ctx.stroke();
     ctx.setLineDash([]);
     
-    // Draw pole (zoomed to show only top portion)
+    // Draw pole (side view)
     ctx.strokeStyle = '#00ffe7';
     ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(poleX, poleBaseY);
-    ctx.lineTo(poleX, poleTopY);
+    ctx.moveTo(sidePoleX, sidePoleBaseY);
+    ctx.lineTo(sidePoleX, sidePoleTopY);
     ctx.stroke();
     
-    // Draw all conductors with different colors
-    const spanLength = 100; // pixels for visual representation
-    const colors = ['#ff6b6b', '#4ade80', '#fbbf24', '#a78bfa', '#f472b6', '#60a5fa'];
+    // Label: SIDE VIEW
+    ctx.fillStyle = '#888';
+    ctx.font = 'bold 10px Consolas, monospace';
+    ctx.fillText('SIDE VIEW', 10, halfHeight + 15);
+    
+    // Draw conductors in side view (alternating left/right)
+    const sideSpanLength = 120;
     
     spanData.forEach((span, index) => {
       const angleRad = span.angle.radians;
       const color = colors[index % colors.length];
       
-      // Calculate horizontal direction based on actual pole positions
-      const dx = span.pole.x - pole.x;
-      const dz = span.pole.z - pole.z;
-      const horizontalDirection = Math.sign(dx); // -1 for left, 1 for right
-      
-      // If multiple connections on same side, offset them slightly
-      const sideIndex = spanData.slice(0, index).filter(s => {
-        const otherDx = s.pole.x - pole.x;
-        return Math.sign(otherDx) === horizontalDirection;
-      }).length;
-      
-      const lateralOffset = sideIndex * 8; // Offset by 8 pixels per additional conductor on same side
-      
-      const endX = poleX + (horizontalDirection * spanLength);
-      const endY = poleTopY - spanLength * Math.tan(angleRad) + lateralOffset;
+      // Alternate left and right for clarity
+      const direction = (index % 2 === 0) ? -1 : 1;
+      const endX = sidePoleX + (direction * sideSpanLength);
+      const endY = sidePoleTopY - sideSpanLength * Math.tan(angleRad);
       
       // Draw conductor line
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(poleX, poleTopY);
+      ctx.moveTo(sidePoleX, sidePoleTopY);
       ctx.lineTo(endX, endY);
       ctx.stroke();
       
       // Angle label
       ctx.fillStyle = color;
-      ctx.font = 'bold 12px Consolas, monospace';
-      const labelX = horizontalDirection > 0 ? endX - 50 : endX + 10;
-      ctx.fillText(`${span.angle.degrees.toFixed(1)}°`, labelX, endY - 5);
-      
-      // Distance label
-      ctx.font = '10px Consolas, monospace';
-      ctx.fillText(`${span.distance.toFixed(0)}ft`, labelX, endY + 10);
+      ctx.font = 'bold 11px Consolas, monospace';
+      const labelX = direction > 0 ? endX - 40 : endX + 5;
+      ctx.fillText(`${span.angle.degrees.toFixed(1)}°`, labelX, endY - 3);
     });
     
     // Draw pole height label
     ctx.fillStyle = '#00ffe7';
-    ctx.font = '11px Consolas, monospace';
-    ctx.fillText(`H: ${pole.h.toFixed(1)}'`, poleX + 15, (poleTopY + poleBaseY) / 2);
+    ctx.font = '10px Consolas, monospace';
+    ctx.fillText(`${pole.h.toFixed(0)}'`, sidePoleX + 8, sidePoleTopY + 40);
   }
 });
