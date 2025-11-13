@@ -408,6 +408,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
   let drag = null, startY = 0, startH = 0, clickStart = null;
   let dragStartPos = null, dragStartHeight = null, dragMode = null;
+  let dragOffset = null; // Offset from mouse to pole position at drag start
 
   const urlParams = new URLSearchParams(window.location.search);
 
@@ -2432,6 +2433,21 @@ document.addEventListener('DOMContentLoaded', () => {
       const pole = poles.find(p => p.obj === drag);
       dragStartPos = { x: pole.x, z: pole.z };
       dragStartHeight = pole.h;
+      
+      // Calculate initial offset from mouse to pole position
+      mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+      ray.setFromCamera(mouse, camera);
+      if (window.terrain) {
+        const intersections = ray.intersectObject(window.terrain, true);
+        const hit = intersections && intersections.length > 0 ? intersections[0] : null;
+        if (hit) {
+          dragOffset = {
+            x: pole.x - hit.point.x,
+            z: pole.z - (hit.point.z - terrainOffsetZ)
+          };
+        }
+      }
+      
       controls.enabled = false;
       
       birds.forEach(b => {
@@ -2465,9 +2481,10 @@ document.addEventListener('DOMContentLoaded', () => {
           hit = intersections && intersections.length > 0 ? intersections[0] : null;
         }
         
-        if (hit) {
-          const newX = SNAP(hit.point.x);
-          const newZ = SNAP(hit.point.z - terrainOffsetZ);
+        if (hit && dragOffset) {
+          // Apply the offset to maintain smooth dragging
+          const newX = SNAP(hit.point.x + dragOffset.x);
+          const newZ = SNAP(hit.point.z - terrainOffsetZ + dragOffset.z);
           
           // Check if any connected spans would exceed max span length
           let validMove = true;
@@ -2770,6 +2787,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const draggedPole = drag; // Store before clearing
       
       drag = null;
+      dragOffset = null; // Clear drag offset
       controls.enabled = true;
       updateLastPoleIndicator(); // Update indicator after drag operation completes
       
@@ -4921,8 +4939,8 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, width, height);
     
-    // Split canvas into top and bottom halves
-    const halfHeight = height / 2;
+    // Split canvas into top and bottom halves (two square sections)
+    const sectionHeight = height / 2; // Each section is 300x300
     
     // Draw grid
     ctx.strokeStyle = '#222';
@@ -4940,11 +4958,11 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.stroke();
     }
     
-    // === TOP HALF: TOP VIEW (Horizontal Layout) ===
+    // === TOP SECTION: TOP VIEW (Horizontal Layout) ===
     
-    // Pole position for top view (center of top half)
+    // Pole position for top view (center of top section)
     const topPoleX = width / 2;
-    const topPoleY = halfHeight / 2;
+    const topPoleY = sectionHeight / 2;
     
     // Draw pole (top view - circle)
     ctx.fillStyle = '#00ffe7';
@@ -4966,7 +4984,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.fillText('W', topPoleX - 60, topPoleY + 4);
     
     // Draw conductors in top view (actual horizontal directions)
-    const topSpanLength = 60;
+    const topSpanLength = 70; // Increased for better visibility
     const colors = ['#ff6b6b', '#4ade80', '#fbbf24', '#a78bfa', '#f472b6', '#60a5fa'];
     
     spanData.forEach((span, index) => {
@@ -4988,28 +5006,34 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.lineTo(endX, endY);
       ctx.stroke();
       
-      // Distance label
+      // Distance label with boundary clamping
       ctx.fillStyle = color;
       ctx.font = 'bold 10px Consolas, monospace';
       const labelDist = topSpanLength + 10;
-      const labelX = topPoleX + labelDist * Math.cos(horizontalAngle);
-      const labelY = topPoleY + labelDist * Math.sin(horizontalAngle);
-      ctx.fillText(`${span.distance.toFixed(0)}ft`, labelX - 15, labelY + 4);
+      let labelX = topPoleX + labelDist * Math.cos(horizontalAngle);
+      let labelY = topPoleY + labelDist * Math.sin(horizontalAngle);
+      
+      // Keep labels within top section bounds (with 5px margin)
+      const labelWidth = 35; // Approximate width of "000ft"
+      labelX = Math.max(5, Math.min(width - labelWidth - 5, labelX - 15));
+      labelY = Math.max(12, Math.min(sectionHeight - 5, labelY + 4));
+      
+      ctx.fillText(`${span.distance.toFixed(0)}ft`, labelX, labelY);
     });
     
     // Draw divider line
     ctx.strokeStyle = '#444';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(0, halfHeight);
-    ctx.lineTo(width, halfHeight);
+    ctx.moveTo(0, sectionHeight);
+    ctx.lineTo(width, sectionHeight);
     ctx.stroke();
     
-    // === BOTTOM HALF: SIDE VIEW (Vertical Angles) ===
+    // === BOTTOM SECTION: SIDE VIEW (Vertical Angles) ===
     
-    // Pole position for side view
+    // Pole position for side view (center of bottom section)
     const sidePoleX = width / 2;
-    const sidePoleTopY = halfHeight + halfHeight / 2;
+    const sidePoleTopY = sectionHeight + sectionHeight / 2;
     const poleVisibleHeight = 80;
     const sidePoleBaseY = sidePoleTopY + poleVisibleHeight;
     
@@ -5018,8 +5042,8 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.lineWidth = 1;
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
-    ctx.moveTo(40, sidePoleTopY);
-    ctx.lineTo(width - 40, sidePoleTopY);
+    ctx.moveTo(30, sidePoleTopY);
+    ctx.lineTo(width - 30, sidePoleTopY);
     ctx.stroke();
     ctx.setLineDash([]);
     
@@ -5034,10 +5058,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Label: SIDE VIEW
     ctx.fillStyle = '#888';
     ctx.font = 'bold 10px Consolas, monospace';
-    ctx.fillText('SIDE VIEW', 10, halfHeight + 15);
+    ctx.fillText('SIDE VIEW', 10, sectionHeight + 15);
     
     // Draw conductors in side view (alternating left/right)
-    const sideSpanLength = 120;
+    const sideSpanLength = 100; // Reduced for better zoom
     
     spanData.forEach((span, index) => {
       const angleRad = span.angle.radians;
@@ -5056,11 +5080,24 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.lineTo(endX, endY);
       ctx.stroke();
       
-      // Angle label
+      // Angle label with boundary clamping
       ctx.fillStyle = color;
       ctx.font = 'bold 11px Consolas, monospace';
-      const labelX = direction > 0 ? endX - 40 : endX + 5;
-      ctx.fillText(`${span.angle.degrees.toFixed(1)}°`, labelX, endY - 3);
+      const labelWidth = 45; // Approximate width of "00.0°"
+      let labelX = direction > 0 ? endX - 40 : endX + 5;
+      let labelY = endY - 3;
+      
+      // Clamp label X within canvas width (with margins)
+      if (direction > 0) {
+        labelX = Math.max(width / 2 + 5, Math.min(width - labelWidth - 5, labelX));
+      } else {
+        labelX = Math.max(5, Math.min(width / 2 - labelWidth - 5, labelX));
+      }
+      
+      // Clamp label Y within bottom section bounds (with margins)
+      labelY = Math.max(sectionHeight + 15, Math.min(height - 5, labelY));
+      
+      ctx.fillText(`${span.angle.degrees.toFixed(1)}°`, labelX, labelY);
     });
     
     // Draw pole height label
