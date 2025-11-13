@@ -576,6 +576,45 @@ body.dark-mode {
       color: #4ade80;
     }
     
+    .challenge-success {
+      flex: 1 1 100%;
+      background: rgba(74, 222, 128, 0.1);
+      border: 1px solid rgba(74, 222, 128, 0.3);
+      border-radius: 6px;
+      padding: 10px;
+      margin-top: 8px;
+    }
+    
+    .challenge-success-title {
+      font-size: 13px;
+      font-weight: bold;
+      color: #4ade80;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    
+    .challenge-success-stats {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    
+    .success-stat {
+      display: flex;
+      gap: 5px;
+      font-size: 11px;
+    }
+    
+    .success-label {
+      opacity: 0.8;
+    }
+    
+    .success-value {
+      font-weight: bold;
+      color: #4ade80;
+    }
+    
     .challenge-actions {
       display: flex;
       gap: 8px;
@@ -620,7 +659,7 @@ body.dark-mode {
     
     /* Move tool panel up when challenge mode is active */
     #challengePanel.active ~ #toolPanel {
-      bottom: 140px;
+      bottom: 200px;
     }
     
     .tool-button {
@@ -671,6 +710,186 @@ body.dark-mode {
       background: var(--panel-border);
       margin: 0 4px;
     }
+    
+    /* Inspection Panel */
+    #inspectionPanel {
+      position: fixed;
+      top: 50%;
+      right: 20px;
+      transform: translateY(-50%);
+      background: var(--panel-bg);
+      border: 2px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 0;
+      width: 450px;
+      z-index: 1100;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+      display: none;
+    }
+    
+    #inspectionPanel.active {
+      display: block;
+    }
+    
+    .inspection-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      background: var(--input-bg);
+      border-bottom: 2px solid var(--panel-border);
+      border-radius: 10px 10px 0 0;
+    }
+    
+    .inspection-title {
+      font-weight: bold;
+      font-size: 13px;
+      color: var(--accent);
+      letter-spacing: 2px;
+    }
+    
+    .close-inspection-btn {
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 28px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+    }
+    
+    .close-inspection-btn:hover {
+      background: var(--button-hover);
+      color: var(--danger);
+    }
+    
+    .inspection-content {
+      padding: 18px;
+    }
+    
+    .inspection-diagram {
+      margin-bottom: 16px;
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      overflow: hidden;
+      background: #000;
+    }
+    
+    #inspectionCanvas {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    
+    .inspection-data {
+      font-size: 12px;
+      color: var(--text);
+    }
+    
+    .inspection-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .inspection-row:last-child {
+      border-bottom: none;
+    }
+    
+    .data-label {
+      font-weight: 600;
+      color: var(--accent);
+    }
+    
+    .data-value {
+      font-family: 'Consolas', 'Menlo', 'Monaco', monospace;
+      color: var(--text);
+    }
+    
+    .inspection-section-title {
+      font-weight: bold;
+      font-size: 11px;
+      color: var(--section-title);
+      margin-top: 12px;
+      margin-bottom: 6px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--panel-border);
+      letter-spacing: 1px;
+    }
+    
+    /* Toast Notifications */
+    #toastContainer {
+      position: fixed;
+      bottom: 250px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+    
+    /* Move toast container when not in challenge mode */
+    body:not(:has(#challengePanel.active)) #toastContainer {
+      bottom: 150px;
+    }
+    
+    .toast {
+      background: rgba(0, 0, 0, 0.85);
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: sans-serif;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      animation: toastSlideIn 0.3s ease;
+      max-width: 400px;
+      text-align: center;
+    }
+    
+    .toast.warning {
+      background: rgba(251, 191, 36, 0.9);
+      color: #000;
+      border-color: rgba(251, 191, 36, 0.3);
+    }
+    
+    .toast.error {
+      background: rgba(239, 68, 68, 0.9);
+      color: #fff;
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+    
+    .toast.fade-out {
+      animation: toastFadeOut 0.3s ease forwards;
+    }
+    
+    @keyframes toastSlideIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    @keyframes toastFadeOut {
+      to {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+    }
   </style>
   <script src="https://unpkg.com/three@0.139.2/build/three.min.js"></script>
   <script src="https://unpkg.com/three@0.139.2/examples/js/controls/OrbitControls.js"></script>
@@ -705,7 +924,7 @@ body.dark-mode {
   </div>
     
     <div class="hud-content" id="hudContent">
-      <div class="instructions"><strong>P</strong>: Pole tool | <strong>C</strong>: Conductor tool | <strong>E</strong>: Eraser tool | <strong>Alt-drag</strong>: resize pole height</div>
+      <div class="instructions"><strong>P</strong>: Pole tool | <strong>C</strong>: Conductor tool | <strong>I</strong>: Inspect tool | <strong>E</strong>: Eraser tool | <strong>Alt-drag</strong>: resize pole height | <strong>Ctrl+Z</strong>: Undo | <strong>Ctrl+Y</strong>: Redo | <strong>Delete</strong>: Remove pole | <strong>Esc</strong>: Cancel tool</div>
       
       <!-- History Section -->
       <div class="control-section">
@@ -815,25 +1034,17 @@ body.dark-mode {
         <span class="scenario-emoji">🏗️</span>
         <span class="scenario-text">Open<br>Playground</span>
       </div>
-      <div class="scenario-button" data-url="?poles-distances=0,20,40&poles-heights=10,15,12&poles-elevations=0,5,2&clearanceThreshold=15">
+      <div class="scenario-button" data-url="?elevation=0,5,2,3,6,5,0,2,0&clearanceThreshold=15">
         <span class="scenario-emoji">🏠</span>
-        <span class="scenario-text">Basic Line<br>Profile</span>
+        <span class="scenario-text">Basic</span>
       </div>
-      <div class="scenario-button" data-url="?poles-distances=0,25,50&poles-heights=20,25,20&poles-elevations=10,0,10&clearanceThreshold=20">
+      <div class="scenario-button" data-url="?elevation=15,10,5,0,-5,-10,-15,-20,-15,-10,-5,0,5,10,15,20,15&clearanceThreshold=20">
         <span class="scenario-emoji">🏔️</span>
         <span class="scenario-text">Valley<br>Crossing</span>
       </div>
       <div class="scenario-button" data-url="?elevation=0,10,0,20,10,5,0,5,10,20,30,20,10,5,0&clearanceThreshold=18">
         <span class="scenario-emoji">🌊</span>
         <span class="scenario-text">Rolling<br>Hills</span>
-      </div>
-      <div class="scenario-button" data-url="?poles-distances=0,40,80&poles-heights=35,40,35&poles-elevations=0,15,0&clearanceThreshold=25">
-        <span class="scenario-emoji">⚡</span>
-        <span class="scenario-text">High Voltage<br>Span</span>
-      </div>
-      <div class="scenario-button" data-url="?poles-distances=0,15,30,45,60&poles-heights=12,8,15,10,14&poles-elevations=0,2,5,1,0&clearanceThreshold=12">
-        <span class="scenario-emoji">🏘️</span>
-        <span class="scenario-text">Residential<br>Route</span>
       </div>
     </div>
   </div>
@@ -887,6 +1098,27 @@ body.dark-mode {
           <div class="challenge-stat-value" id="challengePoles">0</div>
         </div>
       </div>
+      <div class="challenge-success" id="challengeSuccess" style="display: none;">
+        <div class="challenge-success-title">🎉 SUCCESS!</div>
+        <div class="challenge-success-stats">
+          <div class="success-stat">
+            <span class="success-label">Savings:</span>
+            <span class="success-value" id="successSavings">$0</span>
+          </div>
+          <div class="success-stat">
+            <span class="success-label">Poles Used:</span>
+            <span class="success-value" id="successPoles">0</span>
+          </div>
+          <div class="success-stat">
+            <span class="success-label">Avg Span:</span>
+            <span class="success-value" id="successAvgSpan">0 ft</span>
+          </div>
+          <div class="success-stat">
+            <span class="success-label">Efficiency:</span>
+            <span class="success-value" id="successEfficiency">0%</span>
+          </div>
+        </div>
+      </div>
       <div class="challenge-actions">
         <button id="checkSolution">✓ Check Solution</button>
         <button id="resetChallenge">↻ Reset</button>
@@ -905,9 +1137,59 @@ body.dark-mode {
       <div class="tool-name">Conductor</div>
     </div>
     <div class="tool-separator"></div>
+    <div class="tool-button" id="inspectTool" data-tool="inspect" title="Inspect pole (I)">
+      <div class="tool-icon">🔍</div>
+      <div class="tool-name">Inspect</div>
+    </div>
     <div class="tool-button" id="eraserTool" data-tool="eraser" title="Erase (E)">
       <div class="tool-icon">🗑️</div>
       <div class="tool-name">Eraser</div>
+    </div>
+  </div>
+  
+  <!-- Inspection Panel -->
+  <div id="inspectionPanel">
+    <div class="inspection-header">
+      <span class="inspection-title">POLE INSPECTION</span>
+      <button id="closeInspection" class="close-inspection-btn">×</button>
+    </div>
+    <div class="inspection-content">
+      <div class="inspection-diagram">
+        <h3 style="margin: 0 0 10px 0; color: #00ffe7; font-size: 16px; text-align: center;">Pole #-</h3>
+        <canvas id="inspectionCanvas" width="400" height="300"></canvas>
+      </div>
+      <div class="inspection-data">
+        <div class="inspection-row">
+          <span class="data-label">Position:</span>
+          <span class="data-value" id="inspectPosition">-</span>
+        </div>
+        <div class="inspection-row">
+          <span class="data-label">Height:</span>
+          <span class="data-value" id="inspectHeight">-</span>
+        </div>
+        <div class="inspection-row">
+          <span class="data-label">Base Elevation:</span>
+          <span class="data-value" id="inspectBase">-</span>
+        </div>
+        <div class="inspection-section-title">UPSTREAM CONNECTION</div>
+        <div class="inspection-row">
+          <span class="data-label">Angle:</span>
+          <span class="data-value" id="inspectLeftAngle">-</span>
+        </div>
+        <div class="inspection-row">
+          <span class="data-label">Distance:</span>
+          <span class="data-value" id="inspectUpstreamDistance">-</span>
+        </div>
+        <div class="inspection-section-title">DOWNSTREAM CONNECTION</div>
+        <div class="inspection-row">
+          <span class="data-label">Angle:</span>
+          <span class="data-value" id="inspectRightAngle">-</span>
+        </div>
+        <div class="inspection-row">
+          <span class="data-label">Distance:</span>
+          <span class="data-value" id="inspectDownstreamDistance">-</span>
+        </div>
+      </div>
     </div>
   </div>
   
@@ -937,5 +1219,9 @@ body.dark-mode {
     }
   });
 </script>
+
+<!-- Toast Notification Container -->
+<div id="toastContainer"></div>
+
 </body>
 </html>

@@ -126,12 +126,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         scene.add(mesh);
         poles.push({ 
+          id: poleData.id || nextPoleId++, // Restore ID or assign new one
           x: poleData.x, 
           z: poleData.z, 
           h: poleData.h, 
           base: poleData.base, 
           obj: mesh 
         });
+        // Update nextPoleId to avoid conflicts
+        if (poleData.id && poleData.id >= nextPoleId) {
+          nextPoleId = poleData.id + 1;
+        }
       });
       
       rebuild();
@@ -180,6 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Primary poles collection (was implicit previously, now explicitly declared before spans usage)
   const poles = [];
   const spans = []; // Manual conductor connections: { a: pole1, b: pole2, type: 'pole' }
+  let nextPoleId = 1; // Counter for assigning unique IDs to poles
 
   function updateSequentialSpans() {
     // No longer auto-generates spans
@@ -253,21 +259,85 @@ document.addEventListener('DOMContentLoaded', () => {
   const mGood = materials.goodSpan;
   const mBird = materials.bird; // Bird material
   const mGhost = materials.ghost;
+  
+  // Create enhanced violation material (thicker, brighter red)
+  const mViolation = new THREE.LineBasicMaterial({ 
+    color: 0xff0000, 
+    linewidth: 4 // Thicker line
+  });
 
   const birds = [];
   let hoverPole = null;
   let hoverPt = null;
   let hoverSpan = null; // Track hovered conductor for eraser tool highlighting
+  let inspectedPole = null; // Track currently inspected pole for dynamic updates
 
   // Labels / annotation collections
   const poleHeightLabels = [];
   const sagCalculationObjects = [];
+  
+  // Power pulse particles for challenge mode
+  const powerPulseParticles = [];
+  
+  // Toast notification system
+  function showToast(message, type = 'info', duration = 2000) {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+    
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    
+    // Auto-remove after duration
+    setTimeout(() => {
+      toast.classList.add('fade-out');
+      setTimeout(() => {
+        container.removeChild(toast);
+      }, 300);
+    }, duration);
+  }
 
   // Ghost pole mesh placeholder
   const ghost = new THREE.Mesh(poleGeo, mGhost.clone());
   ghost.visible = false;
   ghost.userData.ghost = true;
   scene.add(ghost);
+
+  // Max span range indicator (circle showing valid placement zone)
+  let maxSpanRangeIndicator = null;
+  function createMaxSpanRangeIndicator(radius, centerX, centerZ) {
+    // Remove old indicator if it exists
+    if (maxSpanRangeIndicator) {
+      scene.remove(maxSpanRangeIndicator);
+      maxSpanRangeIndicator.geometry.dispose();
+    }
+    
+    const segments = 64;
+    const geometry = new THREE.BufferGeometry();
+    const positions = [];
+    
+    for (let i = 0; i <= segments; i++) {
+      const theta = (i / segments) * Math.PI * 2;
+      const x = centerX + Math.cos(theta) * radius;
+      const z = centerZ + Math.sin(theta) * radius;
+      const y = hAt(x, z + terrainOffsetZ) + 0.5; // Slightly above terrain
+      positions.push(x, y, z + terrainOffsetZ);
+    }
+    
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    
+    const material = new THREE.LineBasicMaterial({
+      color: 0x00ff00,
+      transparent: true,
+      opacity: 0.4,
+      linewidth: 2
+    });
+    
+    maxSpanRangeIndicator = new THREE.Line(geometry, material);
+    maxSpanRangeIndicator.userData.maxSpanRange = true;
+    scene.add(maxSpanRangeIndicator);
+  }
 
   // Last pole outer indicator (pulsing ring) + existing inner indicator
   const mLastPoleOuterIndicator = new THREE.LineBasicMaterial({
@@ -584,6 +654,77 @@ document.addEventListener('DOMContentLoaded', () => {
     // The buildTerrain function has been moved to terrain.js and is imported as importedBuildTerrain
   // fitGroundInView is imported from terrain.js
 
+  // Fireworks celebration system
+  const fireworksParticles = [];
+  
+  function launchFireworks() {
+    // Launch 8 fireworks at random positions above the scene
+    for (let i = 0; i < 8; i++) {
+      setTimeout(() => {
+        createFirework(
+          Math.random() * 40 - 20, // x
+          Math.random() * 30 + 30,  // y (high in the air)
+          Math.random() * 40 - 20   // z
+        );
+      }, i * 300);
+    }
+  }
+  
+  function createFirework(x, y, z) {
+    const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff, 0xffa500];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const particleCount = 50;
+    
+    for (let i = 0; i < particleCount; i++) {
+      const geometry = new THREE.SphereGeometry(0.2, 4, 4);
+      const material = new THREE.MeshBasicMaterial({ color });
+      const particle = new THREE.Mesh(geometry, material);
+      
+      particle.position.set(x, y, z);
+      
+      // Random velocity in all directions
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI;
+      const speed = Math.random() * 10 + 5;
+      
+      particle.userData.velocity = new THREE.Vector3(
+        Math.sin(phi) * Math.cos(theta) * speed,
+        Math.sin(phi) * Math.sin(theta) * speed,
+        Math.cos(phi) * speed
+      );
+      
+      particle.userData.life = 1.0;
+      particle.userData.gravity = -20;
+      
+      scene.add(particle);
+      fireworksParticles.push(particle);
+    }
+  }
+  
+  function updateFireworks(deltaTime) {
+    for (let i = fireworksParticles.length - 1; i >= 0; i--) {
+      const particle = fireworksParticles[i];
+      
+      // Update velocity with gravity
+      particle.userData.velocity.y += particle.userData.gravity * deltaTime;
+      
+      // Update position
+      particle.position.add(particle.userData.velocity.clone().multiplyScalar(deltaTime));
+      
+      // Fade out
+      particle.userData.life -= deltaTime * 0.8;
+      particle.material.opacity = Math.max(0, particle.userData.life);
+      particle.material.transparent = true;
+      
+      // Remove dead particles
+      if (particle.userData.life <= 0) {
+        scene.remove(particle);
+        particle.geometry.dispose();
+        particle.material.dispose();
+        fireworksParticles.splice(i, 1);
+      }
+    }
+  }
 
   function clearSceneElements() {
     scene.children.filter(o => o.userData.environmentElement).forEach(obj => {
@@ -857,6 +998,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Activate challenge mode
     challengeState.active = true;
     challengeState.isPowered = false;
+    challengeState.celebrationShown = false; // Reset celebration flag
     UIState.challengeMode = true;
     UIState.challengeSpent = 0;
     
@@ -908,6 +1050,28 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       challengeState.targetCircle = null;
     }
+    
+    // Remove max span range indicator
+    if (maxSpanRangeIndicator) {
+      scene.remove(maxSpanRangeIndicator);
+      maxSpanRangeIndicator.geometry.dispose();
+      maxSpanRangeIndicator.material.dispose();
+      maxSpanRangeIndicator = null;
+    }
+    
+    // Hide success panel
+    document.getElementById('challengeSuccess').style.display = 'none';
+    
+    // Clear any remaining fireworks
+    fireworksParticles.forEach(particle => {
+      scene.remove(particle);
+      particle.geometry.dispose();
+      particle.material.dispose();
+    });
+    fireworksParticles.length = 0;
+    
+    // Clear power pulse particles
+    clearPowerPulseParticles();
     
     // Deactivate challenge mode
     challengeState.active = false;
@@ -1093,22 +1257,326 @@ document.addEventListener('DOMContentLoaded', () => {
     // Show results
     if (issues.length === 0) {
       const savings = UIState.challengeBudget - UIState.challengeSpent;
-      alert(`🎉 SUCCESS!\n\nYou powered the customer!\n\n` +
-            `Budget: $${UIState.challengeBudget.toLocaleString()}\n` +
-            `Spent: $${Math.round(UIState.challengeSpent).toLocaleString()}\n` +
-            `Savings: $${Math.round(savings).toLocaleString()}\n` +
-            `Poles used: ${poles.length}\n\n` +
-            `⚡ The customer has power!`);
+      
+      // Calculate average span length
+      let totalSpanLength = 0;
+      let spanCount = 0;
+      
+      // Include substation to first pole
+      if (poles.length > 0) {
+        const dx = poles[0].x - challengeState.substationBuilding.x;
+        const dz = poles[0].z - challengeState.substationBuilding.z;
+        totalSpanLength += Math.sqrt(dx * dx + dz * dz);
+        spanCount++;
+      }
+      
+      // Include pole-to-pole spans
+      spans.forEach(span => {
+        const dx = span.a.x - span.b.x;
+        const dz = span.a.z - span.b.z;
+        totalSpanLength += Math.sqrt(dx * dx + dz * dz);
+        spanCount++;
+      });
+      
+      // Include last pole to customer (if powered)
+      if (poles.length > 0) {
+        const lastPole = poles[poles.length - 1];
+        const dx = lastPole.x - challengeState.customerBuilding.x;
+        const dz = lastPole.z - challengeState.customerBuilding.z;
+        const distToCustomer = Math.sqrt(dx * dx + dz * dz);
+        if (distToCustomer <= 15) {
+          totalSpanLength += distToCustomer;
+          spanCount++;
+        }
+      }
+      
+      const avgSpan = spanCount > 0 ? totalSpanLength / spanCount : 0;
+      const efficiency = UIState.challengeBudget > 0 ? (savings / UIState.challengeBudget * 100) : 0;
+      
+      // Update success panel
+      document.getElementById('successSavings').textContent = `$${Math.round(savings).toLocaleString()}`;
+      document.getElementById('successPoles').textContent = poles.length;
+      document.getElementById('successAvgSpan').textContent = `${avgSpan.toFixed(1)} ft`;
+      document.getElementById('successEfficiency').textContent = `${efficiency.toFixed(1)}%`;
+      document.getElementById('challengeSuccess').style.display = 'block';
+      
+      // Trigger fireworks celebration
+      launchFireworks();
     } else {
+      // Hide success panel on failure
+      document.getElementById('challengeSuccess').style.display = 'none';
       alert(`Solution Issues:\n\n${issues.join('\n')}\n\nKeep trying!`);
+    }
+  }
+  
+  function autoCheckChallengeSolution() {
+    if (!challengeState.active) return;
+    
+    // Skip if already showing success
+    const successPanel = document.getElementById('challengeSuccess');
+    if (successPanel && successPanel.style.display === 'block') return;
+    
+    const issues = [];
+    
+    // Check if customer is powered
+    if (!challengeState.isPowered) {
+      return; // Silently fail - not powered yet
+    }
+    
+    // Check if there are poles
+    if (poles.length === 0) {
+      return; // Silently fail - no poles
+    }
+    
+    // Check span lengths
+    let hasSpanViolation = false;
+    
+    // Check first pole distance from substation
+    if (poles.length > 0) {
+      const firstPole = poles[0];
+      const dx = firstPole.x - challengeState.substationBuilding.x;
+      const dz = firstPole.z - challengeState.substationBuilding.z;
+      const distance = Math.sqrt(dx * dx + dz * dz);
+      if (distance > UIState.maxSpanLength) {
+        return; // Silently fail - span too long
+      }
+    }
+    
+    // Check distances between poles
+    for (let i = 1; i < poles.length; i++) {
+      const p1 = poles[i-1];
+      const p2 = poles[i];
+      const dx = p2.x - p1.x;
+      const dz = p2.z - p1.z;
+      const distance = Math.sqrt(dx * dx + dz * dz);
+      
+      if (distance > UIState.maxSpanLength) {
+        return; // Silently fail - span too long
+      }
+    }
+    
+    // Check budget
+    if (UIState.challengeSpent > UIState.challengeBudget) {
+      return; // Silently fail - over budget
+    }
+    
+    // Check clearances
+    const clearanceOK = checkClearances();
+    if (!clearanceOK) {
+      return; // Silently fail - clearance violations
+    }
+    
+    // All checks passed! Show success
+    const savings = UIState.challengeBudget - UIState.challengeSpent;
+    
+    // Calculate average span length
+    let totalSpanLength = 0;
+    let spanCount = 0;
+    
+    // Include substation to first pole
+    if (poles.length > 0) {
+      const dx = poles[0].x - challengeState.substationBuilding.x;
+      const dz = poles[0].z - challengeState.substationBuilding.z;
+      totalSpanLength += Math.sqrt(dx * dx + dz * dz);
+      spanCount++;
+    }
+    
+    // Include pole-to-pole spans
+    spans.forEach(span => {
+      const dx = span.a.x - span.b.x;
+      const dz = span.a.z - span.b.z;
+      totalSpanLength += Math.sqrt(dx * dx + dz * dz);
+      spanCount++;
+    });
+    
+    // Include last pole to customer (if powered)
+    if (poles.length > 0) {
+      const lastPole = poles[poles.length - 1];
+      const dx = lastPole.x - challengeState.customerBuilding.x;
+      const dz = lastPole.z - challengeState.customerBuilding.z;
+      const distToCustomer = Math.sqrt(dx * dx + dz * dz);
+      if (distToCustomer <= 15) {
+        totalSpanLength += distToCustomer;
+        spanCount++;
+      }
+    }
+    
+    const avgSpan = spanCount > 0 ? totalSpanLength / spanCount : 0;
+    const efficiency = UIState.challengeBudget > 0 ? (savings / UIState.challengeBudget * 100) : 0;
+    
+    // Update success panel
+    document.getElementById('successSavings').textContent = `$${Math.round(savings).toLocaleString()}`;
+    document.getElementById('successPoles').textContent = poles.length;
+    document.getElementById('successAvgSpan').textContent = `${avgSpan.toFixed(1)} ft`;
+    document.getElementById('successEfficiency').textContent = `${efficiency.toFixed(1)}%`;
+    document.getElementById('challengeSuccess').style.display = 'block';
+    
+    // Trigger fireworks celebration (only once)
+    if (!challengeState.celebrationShown) {
+      launchFireworks();
+      challengeState.celebrationShown = true;
     }
   }
   
   function resetChallengeLevel() {
     if (!challengeState.active) return;
     
+    // Hide success panel
+    document.getElementById('challengeSuccess').style.display = 'none';
+    
+    // Reset celebration flag
+    challengeState.celebrationShown = false;
+    
     exitChallengeMode();
     setTimeout(() => enterChallengeMode(), 50);
+  }
+
+  /* ------- Power Pulse Animation (Challenge Mode) ------- */
+  function startPowerPulseAnimation() {
+    if (!challengeState.active || !challengeState.substationBuilding || !challengeState.customerBuilding) return;
+    
+    // Clear any existing particles
+    clearPowerPulseParticles();
+    
+    // Build path segments with catenary curves from substation through poles to customer
+    const pathSegments = [];
+    
+    // Find all spans to build the power path
+    const powerSpans = [];
+    
+    // Start from substation - find span connected to it
+    const substationPos = {
+      x: challengeState.substationBuilding.x,
+      y: challengeState.substationBuilding.base + challengeState.substationBuilding.h,
+      z: challengeState.substationBuilding.z + terrainOffsetZ
+    };
+    
+    // Build ordered list of spans from substation to customer
+    if (poles.length > 0) {
+      // First span: substation to first pole
+      const firstPole = poles[0];
+      const substationAsPole = {
+        x: challengeState.substationBuilding.x,
+        base: challengeState.substationBuilding.base + challengeState.substationBuilding.h,
+        h: 0,
+        z: challengeState.substationBuilding.z
+      };
+      powerSpans.push({
+        poleA: substationAsPole,
+        poleB: firstPole
+      });
+      
+      // Middle spans: pole to pole
+      for (let i = 0; i < poles.length - 1; i++) {
+        powerSpans.push({
+          poleA: poles[i],
+          poleB: poles[i + 1]
+        });
+      }
+      
+      // Last span: last pole to customer
+      const lastPole = poles[poles.length - 1];
+      const customerAsPole = {
+        x: challengeState.customerBuilding.x,
+        base: challengeState.customerBuilding.base + challengeState.customerBuilding.h,
+        h: 0,
+        z: challengeState.customerBuilding.z
+      };
+      powerSpans.push({
+        poleA: lastPole,
+        poleB: customerAsPole
+      });
+    }
+    
+    // Convert spans to catenary curve points
+    powerSpans.forEach(span => {
+      const curve = getConductorCurve({
+        poleA: span.poleA,
+        poleB: span.poleB,
+        tension: 2.0,
+        terrainOffsetZ: terrainOffsetZ,
+        samples: 32
+      });
+      pathSegments.push(curve);
+    });
+    
+    // Create particles along the path
+    const particleCount = 8;
+    const particleGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+    const particleMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0x60a5fa, // Softer blue
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending // Glow effect
+    });
+    
+    for (let i = 0; i < particleCount; i++) {
+      const particle = new THREE.Mesh(particleGeometry, particleMaterial.clone());
+      particle.userData.pathProgress = i / particleCount; // Stagger particles
+      particle.userData.pathSegments = pathSegments;
+      scene.add(particle);
+      powerPulseParticles.push(particle);
+    }
+  }
+  
+  function clearPowerPulseParticles() {
+    powerPulseParticles.forEach(particle => {
+      scene.remove(particle);
+      if (particle.geometry) particle.geometry.dispose();
+      if (particle.material) particle.material.dispose();
+    });
+    powerPulseParticles.length = 0;
+  }
+  
+  function updatePowerPulseParticles(deltaTime) {
+    if (!challengeState.isPowered || powerPulseParticles.length === 0) return;
+    
+    const speed = 0.15; // Progress per second (0-1 scale)
+    
+    powerPulseParticles.forEach(particle => {
+      const pathSegments = particle.userData.pathSegments;
+      if (!pathSegments || pathSegments.length === 0) return;
+      
+      // Update progress
+      particle.userData.pathProgress += speed * deltaTime;
+      if (particle.userData.pathProgress > 1) {
+        particle.userData.pathProgress -= 1; // Loop
+      }
+      
+      // Calculate which segment and position within it
+      const totalSegments = pathSegments.length;
+      const progressInPath = particle.userData.pathProgress * totalSegments;
+      const segmentIndex = Math.floor(progressInPath);
+      const segmentProgress = progressInPath - segmentIndex;
+      
+      if (segmentIndex < totalSegments) {
+        const curve = pathSegments[segmentIndex];
+        
+        // Get position along the catenary curve
+        const t = segmentProgress; // 0 to 1 within this curve
+        const pointIndex = Math.floor(t * (curve.length - 1));
+        const nextIndex = Math.min(pointIndex + 1, curve.length - 1);
+        const localT = (t * (curve.length - 1)) - pointIndex;
+        
+        // Interpolate between curve points
+        const point1 = curve[pointIndex];
+        const point2 = curve[nextIndex];
+        
+        particle.position.x = point1.x + (point2.x - point1.x) * localT;
+        particle.position.y = point1.y + (point2.y - point1.y) * localT;
+        particle.position.z = point1.z + (point2.z - point1.z) * localT;
+        
+        // Subtle pulse with smooth fade in/out
+        const time = Date.now() * 0.002;
+        const pulsePhase = particle.userData.pathProgress * Math.PI * 4;
+        const pulseIntensity = Math.sin(time + pulsePhase) * 0.15 + 0.5; // Oscillate 0.35-0.65
+        particle.material.opacity = pulseIntensity;
+        
+        // Subtle scale variation
+        const scaleVariation = Math.sin(time * 1.3 + pulsePhase) * 0.2 + 1.0; // 0.8-1.2
+        particle.scale.setScalar(scaleVariation);
+      }
+    });
   }
 
   /* ------- UI initialization ------- */
@@ -1369,6 +1837,17 @@ document.addEventListener('DOMContentLoaded', () => {
         scene.add(clearanceBuffer);
       }
       
+      // Mark violated spans with enhanced material
+      const hasViolation = violationPoint && minClearance < threshold;
+      spanGroup.forEach(span => {
+        span.userData.hasViolation = hasViolation;
+        if (hasViolation) {
+          span.material = mViolation;
+        } else {
+          span.material = mGood;
+        }
+      });
+      
       // If we found a violation, create simple line indicator for this span alignment
       if (violationPoint && minClearance < threshold) {
         hasIssues = true;
@@ -1438,7 +1917,12 @@ document.addEventListener('DOMContentLoaded', () => {
       
       const geo = new THREE.BufferGeometry().setFromPoints(pts);
       const line = new THREE.Line(geo, mGood);
-      line.userData = { span: true, a: a.obj, b: b.obj };
+      line.userData = { 
+        span: true, 
+        a: a.obj, 
+        b: b.obj,
+        hasViolation: false // Will be updated by checkClearances
+      };
       scene.add(line);
     });
   }
@@ -1503,10 +1987,19 @@ document.addEventListener('DOMContentLoaded', () => {
         challengeState.customerMesh.material.emissive.setHex(0x3b82f6);
         challengeState.customerMesh.material.emissiveIntensity = 0.8;
         challengeState.isPowered = true;
+        
+        // Start power pulse animation
+        startPowerPulseAnimation();
       } else if (!shouldPower && challengeState.isPowered) {
         challengeState.customerMesh.material.emissive.setHex(0x000000);
         challengeState.customerMesh.material.emissiveIntensity = 0;
         challengeState.isPowered = false;
+        
+        // Clear power pulse particles
+        clearPowerPulseParticles();
+      } else if (shouldPower && challengeState.isPowered) {
+        // Redraw power pulses if conductor configuration changed while powered
+        startPowerPulseAnimation();
       }
     }
 
@@ -1522,11 +2015,31 @@ document.addEventListener('DOMContentLoaded', () => {
     updatePoleHeightLabels();
     updateSagCalculations();
     checkClearances();
-    if (challengeState.active) updateChallengeStats();
+    if (challengeState.active) {
+      updateChallengeStats();
+      // Auto-check solution after each change
+      autoCheckChallengeSolution();
+    }
+    
+    // Update inspection panel if a pole is currently being inspected
+    if (inspectedPole && elements.inspectionPanel?.classList.contains('active')) {
+      updateInspectionPanel();
+    }
   }
 
   function addPole(x, z, h) {
-    if (poles.some(p => p.x === x && p.z === z)) return;
+    // Prevent placing pole too close to existing poles (within 1 ft radius)
+    const minDistance = 1.0;
+    const tooClose = poles.some(p => {
+      const dx = p.x - x;
+      const dz = p.z - z;
+      const distance = Math.sqrt(dx * dx + dz * dz);
+      return distance < minDistance;
+    });
+    if (tooClose) {
+      showToast('⚠️ Pole too close to existing pole', 'warning', 1500);
+      return;
+    }
 
     // In challenge mode, check span length limits
     if (challengeState.active && UIState.maxSpanLength) {
@@ -1550,7 +2063,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const distance = Math.sqrt(dx * dx + dz * dz);
         
         if (distance > UIState.maxSpanLength) {
-          // Silently prevent placement - don't show disruptive popup
+          showToast(`⚠️ Span too long (${distance.toFixed(0)}ft > ${UIState.maxSpanLength}ft max)`, 'warning', 2000);
           return;
         }
       }
@@ -1567,7 +2080,7 @@ document.addEventListener('DOMContentLoaded', () => {
     mesh.add(crossArm);
     
     scene.add(mesh);
-    poles.push({ x, z, h, base, obj: mesh });
+    poles.push({ id: nextPoleId++, x, z, h, base, obj: mesh });
     rebuild();
     updateCrossarmOrientations();
     updateLastPoleIndicator(); // Update the last pole indicator
@@ -1585,6 +2098,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const i = poles.findIndex(p => p.obj === obj); 
     if(i > -1){
       const pole = poles[i];
+      
+      // If this is the inspected pole, close the inspection panel
+      if (inspectedPole === pole) {
+        closeInspectionPanel();
+      }
       
       // Remove all spans connected to this pole
       for (let j = spans.length - 1; j >= 0; j--) {
@@ -1723,6 +2241,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const existingLabel = document.getElementById('ghostSpanLabel');
     if (existingLabel) existingLabel.style.display = 'none';
     
+    // Hide max span range indicator by default
+    if (maxSpanRangeIndicator) {
+      maxSpanRangeIndicator.visible = false;
+    }
+    
     // Show conductor preview if conductor tool is active and we have a start pole and hover pole
     if (UIState.conductorToolActive && UIState.conductorStartPole && UIState.conductorHoverPole) {
       // TODO: Add ghost conductor line preview between the two poles
@@ -1751,6 +2274,9 @@ document.addEventListener('DOMContentLoaded', () => {
         startX = poles[poles.length - 1].x;
         startZ = poles[poles.length - 1].z;
       } else {
+        // Reset ghost color to default when no reference
+        ghost.material.color.set(0x00ff00);
+        ghost.material.opacity = 0.5;
         return; // No reference point yet
       }
 
@@ -1758,6 +2284,21 @@ document.addEventListener('DOMContentLoaded', () => {
       const dz = hoverPt.z - startZ;
       const spanDist = Math.sqrt(dx * dx + dz * dz);
       const overLimit = UIState.maxSpanLength && spanDist > UIState.maxSpanLength;
+
+      // Color-code ghost pole: green if valid, red if too far
+      if (overLimit) {
+        ghost.material.color.set(0xff0000); // Red
+        ghost.material.opacity = 0.6;
+      } else {
+        ghost.material.color.set(0x00ff00); // Green
+        ghost.material.opacity = 0.5;
+      }
+
+      // Show max span range circle around reference point
+      if (UIState.maxSpanLength) {
+        createMaxSpanRangeIndicator(UIState.maxSpanLength, startX, startZ);
+        maxSpanRangeIndicator.visible = true;
+      }
 
       // Create or update label element
       let label = existingLabel;
@@ -1789,6 +2330,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const sy = (-projected.y * 0.5 + 0.5) * window.innerHeight;
       label.style.left = `${sx - label.offsetWidth / 2}px`;
       label.style.top = `${sy - 20}px`;
+    } else {
+      // Reset ghost color to default when not in challenge mode
+      ghost.material.color.set(0x00ff00);
+      ghost.material.opacity = 0.5;
     }
   }
 
@@ -1805,15 +2350,56 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const pPick = pick(e, poleMeshes());
+    let pPick = pick(e, poleMeshes());
+    
+    // Use larger click radius for easier targeting (same as inspect tool)
+    if (!pPick) {
+      mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+      
+      const clickRadius = 100; // pixels
+      let nearestPole = null;
+      let nearestDist = Infinity;
+      
+      poles.forEach(pole => {
+        const poleTop = new THREE.Vector3(pole.x, pole.base + pole.h, pole.z + terrainOffsetZ);
+        poleTop.project(camera);
+        
+        const screenX = (poleTop.x * 0.5 + 0.5) * window.innerWidth;
+        const screenY = (-poleTop.y * 0.5 + 0.5) * window.innerHeight;
+        
+        const dx = screenX - e.clientX;
+        const dy = screenY - e.clientY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < clickRadius && dist < nearestDist) {
+          nearestDist = dist;
+          nearestPole = pole.obj;
+        }
+      });
+      
+      if (nearestPole) {
+        pPick = nearestPole;
+      }
+    }
+    
+    // Always set clickStart for non-dragging tools (for click detection)
+    // This includes: eraser, and conductor-only mode
+    // Inspect tool allows alt-drag for resizing
+    if (UIState.eraserToolActive || 
+        (UIState.inspectToolActive && !e.altKey) ||
+        (UIState.conductorToolActive && !UIState.poleToolActive)) {
+      clickStart = [e.clientX, e.clientY];
+      return;
+    }
+    
     if (pPick) {
       // Check if this is a challenge building (immovable)
       if (pPick.userData && pPick.userData.challengeBuilding) {
         return; // Don't allow dragging buildings
       }
       
-      // Don't start drag if eraser tool is active
-      if (UIState.eraserToolActive) {
+      // Allow alt-drag for height adjustment even in inspect mode
+      if (UIState.inspectToolActive && !e.altKey) {
         clickStart = [e.clientX, e.clientY];
         return;
       }
@@ -1914,18 +2500,36 @@ document.addEventListener('DOMContentLoaded', () => {
       if (pole) {
         rebuild();
         updateCrossarmOrientations();
+        
+        // Update inspection panel in real-time during drag
+        if (inspectedPole && elements.inspectionPanel?.classList.contains('active')) {
+          updateInspectionPanel();
+        }
       }
       return;
     }
 
     let pPick = pick(e, poleMeshes());
+    let conductorHit = null;
     
-    // In conductor-only mode, use larger hit radius for easier targeting
-    if (UIState.conductorToolActive && !UIState.poleToolActive && !pPick) {
+    // In eraser mode, check conductor hover first to give it priority
+    if (UIState.eraserToolActive) {
+      mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+      ray.setFromCamera(mouse, camera);
+      const spanLines = scene.children.filter(o => o.userData.span);
+      const spanHitResult = ray.intersectObjects(spanLines, true)[0];
+      
+      if (spanHitResult && spanHitResult.object.userData.span) {
+        conductorHit = spanHitResult.object;
+      }
+    }
+    
+    // Use larger hit radius for easier targeting, but only if not hovering a conductor in eraser mode
+    if (!pPick && !(UIState.eraserToolActive && conductorHit)) {
       // Find nearest pole within screen-space radius
       mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
       
-      const clickRadius = 80; // pixels
+      const clickRadius = 100; // pixels - larger for better targeting
       let nearestPole = null;
       let nearestDist = Infinity;
       
@@ -1951,8 +2555,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     
-    // Handle pole hover highlighting
-    if (pPick !== hoverPole) {
+    // Handle pole hover highlighting (only if not hovering conductor in eraser mode)
+    if (!conductorHit && pPick !== hoverPole) {
       if (hoverPole) {
         // Don't reset material if this is the conductor start pole
         if (!UIState.conductorStartPole || hoverPole !== UIState.conductorStartPole.obj) {
@@ -1961,52 +2565,62 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       hoverPole = pPick;
       if (hoverPole) {
-        // Always highlight on hover (unless eraser tool and not hovering a pole)
-        if (!UIState.eraserToolActive || pPick) {
+        // Always highlight on hover for inspect and conductor tools
+        if (UIState.inspectToolActive || (!UIState.eraserToolActive || pPick)) {
           hoverPole.material = mPoleHL;
         }
       }
+    } else if (conductorHit && hoverPole) {
+      // Reset pole highlight when hovering conductor
+      if (!UIState.conductorStartPole || hoverPole !== UIState.conductorStartPole.obj) {
+        hoverPole.material = mPole;
+      }
+      hoverPole = null;
     }
     
     // Handle conductor hover highlighting for eraser tool
-    if (UIState.eraserToolActive && !pPick) {
-      // Check if hovering over a conductor
-      mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
-      ray.setFromCamera(mouse, camera);
+    if (UIState.eraserToolActive && conductorHit) {
       const spanLines = scene.children.filter(o => o.userData.span);
-      const spanHit = ray.intersectObjects(spanLines, true)[0];
+      const hitSpan = conductorHit;
       
-      if (spanHit && spanHit.object.userData.span) {
-        const hitSpan = spanHit.object;
-        
-        // If hovering a different span, reset the previous one
-        if (hoverSpan && hoverSpan !== hitSpan) {
-          hoverSpan.material = mGood;
-        }
-        
-        // Highlight the hovered span
-        if (hoverSpan !== hitSpan) {
-          hoverSpan = hitSpan;
-          // Create highlight material based on dark mode
-          const isDark = document.body.classList.contains('dark-mode');
-          const highlightColor = isDark ? 0x00ffe7 : 0x4169e1; // Light blue for dark, royal blue for light
-          const highlightMaterial = new THREE.LineBasicMaterial({ 
-            color: highlightColor,
-            linewidth: 2
-          });
-          hoverSpan.material = highlightMaterial;
-        }
-      } else {
-        // Not hovering any span - reset if we were
+      // Find all 3 conductor strands for this span (they share the same pole pair)
+      const spanGroup = spanLines.filter(line => 
+        line.userData.a === hitSpan.userData.a && 
+        line.userData.b === hitSpan.userData.b
+      );
+      
+      // Check if we're hovering a different span group
+      const isSameGroup = hoverSpan && spanGroup.includes(hoverSpan);
+      
+      if (!isSameGroup) {
+        // Reset previous span group
         if (hoverSpan) {
-          hoverSpan.material = mGood;
-          hoverSpan = null;
+          const prevGroup = spanLines.filter(line =>
+            line.userData.a === hoverSpan.userData.a &&
+            line.userData.b === hoverSpan.userData.b
+          );
+          prevGroup.forEach(line => line.material = mGood);
         }
+        
+        // Highlight all 3 strands of the new span
+        hoverSpan = hitSpan;
+        const isDark = document.body.classList.contains('dark-mode');
+        const highlightColor = isDark ? 0x00ffe7 : 0x4169e1; // Light blue for dark, royal blue for light
+        const highlightMaterial = new THREE.LineBasicMaterial({ 
+          color: highlightColor,
+          linewidth: 2
+        });
+        spanGroup.forEach(line => line.material = highlightMaterial);
       }
     } else {
-      // Not in eraser mode or hovering a pole - reset any highlighted span
+      // Not in eraser mode or hovering a pole - reset any highlighted span group
       if (hoverSpan) {
-        hoverSpan.material = mGood;
+        const spanLines = scene.children.filter(o => o.userData.span);
+        const spanGroup = spanLines.filter(line =>
+          line.userData.a === hoverSpan.userData.a &&
+          line.userData.b === hoverSpan.userData.b
+        );
+        spanGroup.forEach(line => line.material = mGood);
         hoverSpan = null;
       }
     }
@@ -2112,8 +2726,48 @@ document.addEventListener('DOMContentLoaded', () => {
   
   function handleToolClick(e) {
     // Ignore clicks on UI elements (tool panel, HUD, etc.)
-    if (e.target.closest('#toolPanel, #hud, #challengePanel, #scenariosPanel')) {
+    if (e.target.closest('#toolPanel, #hud, #challengePanel, #scenariosPanel, #inspectionPanel')) {
       return;
+    }
+    
+    // Handle inspect tool
+    if (UIState.inspectToolActive) {
+      let pPick = pick(e, poleMeshes());
+      
+      // Use larger click radius for easier targeting
+      if (!pPick) {
+        mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+        
+        const clickRadius = 100; // pixels
+        let nearestPole = null;
+        let nearestDist = Infinity;
+        
+        poles.forEach(pole => {
+          const poleTop = new THREE.Vector3(pole.x, pole.base + pole.h, pole.z + terrainOffsetZ);
+          poleTop.project(camera);
+          
+          const screenX = (poleTop.x * 0.5 + 0.5) * window.innerWidth;
+          const screenY = (-poleTop.y * 0.5 + 0.5) * window.innerHeight;
+          
+          const dx = screenX - e.clientX;
+          const dy = screenY - e.clientY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist < clickRadius && dist < nearestDist) {
+            nearestDist = dist;
+            nearestPole = pole.obj;
+          }
+        });
+        
+        if (nearestPole) {
+          pPick = nearestPole;
+        }
+      }
+      
+      if (pPick) {
+        inspectPole(pPick);
+        return;
+      }
     }
     
     // Handle eraser tool
@@ -2152,7 +2806,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!pPick) {
         mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
         
-        const clickRadius = 80; // pixels
+        const clickRadius = 100; // pixels
         let nearestPole = null;
         let nearestDist = Infinity;
         
@@ -2291,6 +2945,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Handle Delete key to remove hovered pole
+  window.addEventListener('deleteHoveredPole', () => {
+    if (hoverPole && !UIState.inspectToolActive) {
+      removePole(hoverPole);
+    } else if (inspectedPole) {
+      // If inspecting a pole, delete that one
+      removePole(inspectedPole.obj);
+    }
+  });
+
   function resetScene() {
     clearSceneElements();
     clearSettingElements();
@@ -2323,6 +2987,7 @@ document.addEventListener('DOMContentLoaded', () => {
     poles.forEach(p => scene.remove(p.obj));
     poles.length = 0;
     spans.length = 0; // Clear the spans array
+    nextPoleId = 1; // Reset pole ID counter
     scene.children.filter(o => o.userData.span).forEach(l => {
       l.geometry.dispose();
       scene.remove(l);
@@ -2339,6 +3004,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Hide all indicators when resetting
     lastPoleIndicator.visible = false;
     lastPoleInnerIndicator.visible = false;
+    
+    // Clear clearance violation indicators (red vertical lines)
+    clearClearanceIndicators();
+    
+    // Close inspection panel when scene is cleared
+    closeInspectionPanel();
     
     // Hide clearance warning when scene is reset
     if (elements.clearanceWarning) {
@@ -2417,7 +3088,7 @@ document.addEventListener('DOMContentLoaded', () => {
       mesh.add(crossArm);
 
       scene.add(mesh);
-      poles.push({ x: xPos, z: zPos, h: scaledHeight, base, obj: mesh });
+      poles.push({ id: nextPoleId++, x: xPos, z: zPos, h: scaledHeight, base, obj: mesh });
     }
     
     rebuild();
@@ -2637,6 +3308,21 @@ document.addEventListener('DOMContentLoaded', () => {
     requestAnimationFrame(animate);
     controls.update();
     
+    // Update power pulse particles
+    const deltaTime = 1 / 60; // Approximate 60fps
+    updatePowerPulseParticles(deltaTime);
+    
+    // Pulse violated spans for visual emphasis
+    const time = Date.now() * 0.003; // Slow pulse
+    const pulseIntensity = Math.sin(time) * 0.3 + 0.7; // Oscillate between 0.4 and 1.0
+    
+    scene.children.filter(o => o.userData.span && o.userData.hasViolation).forEach(span => {
+      // Pulse the color brightness
+      const baseRed = 255;
+      const pulsedRed = Math.floor(baseRed * pulseIntensity);
+      span.material.color.setRGB(pulsedRed / 255, 0, 0);
+    });
+    
     // Update grid labels position if they exist
     scene.children.filter(o => o.userData.grid && o.userData.labels).forEach(grid => {
       if (!grid.userData.labels) return;
@@ -2743,6 +3429,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update birds
     const delta = 0.016; // Approximate frame time
     birds.forEach(bird => bird.update(delta));
+    
+    // Update fireworks particles
+    if (fireworksParticles.length > 0) {
+      updateFireworks(delta);
+    }
     
     // Update coastal water waves if present
     const waterMesh = scene.children.find(o => o.userData.isWater);
@@ -3303,9 +3994,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Create scene data object
       const sceneData = {
-        version: "1.1", // Increment version to indicate terrain data inclusion
+        version: "1.2", // Increment version to indicate pole ID support
         timestamp: new Date().toISOString(),
         poles: poles.map(pole => ({
+          id: pole.id,
           x: pole.x,
           z: pole.z,
           height: pole.h,
@@ -3504,12 +4196,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         scene.add(mesh);
         poles.push({ 
+          id: poleData.id || nextPoleId++, // Restore ID or assign new one
           x: poleData.x, 
           z: poleData.z, 
           h: poleData.height, 
           base: poleData.elevation, 
           obj: mesh 
         });
+        // Update nextPoleId to avoid conflicts
+        if (poleData.id && poleData.id >= nextPoleId) {
+          nextPoleId = poleData.id + 1;
+        }
       });
       
       // Import settings
@@ -3723,12 +4420,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
           scene.add(mesh);
           poles.push({ 
+            id: nextPoleId++, // Assign unique GridScaper ID
             x: poleData.x, 
             z: poleData.z, 
             h: poleData.height, 
             base: poleData.elevation, 
             obj: mesh,
-            gisId: poleData.id,
+            gisId: poleData.id, // Keep original GIS ID separate
             originalCoords: poleData.originalCoords
           });
         });
@@ -3988,5 +4686,273 @@ document.addEventListener('DOMContentLoaded', () => {
         hudCollapseBtn.textContent = '+';
       }
     });
+  }
+  
+  // Inspection panel close button
+  const closeInspectionBtn = document.getElementById('closeInspection');
+  if (closeInspectionBtn) {
+    closeInspectionBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeInspectionPanel();
+    });
+  }
+  
+  // Pole Inspection Functions
+  function inspectPole(poleObj) {
+    const pole = poles.find(p => p.obj === poleObj);
+    if (!pole) return;
+    
+    // Store reference to currently inspected pole for dynamic updates
+    inspectedPole = pole;
+    
+    // Update the inspection display
+    updateInspectionPanel();
+    
+    // Show panel
+    elements.inspectionPanel.classList.add('active');
+  }
+  
+  function updateInspectionPanel() {
+    if (!inspectedPole) return;
+    
+    // Check if the inspected pole still exists
+    const poleStillExists = poles.find(p => p === inspectedPole);
+    if (!poleStillExists) {
+      // Pole was deleted, close panel
+      closeInspectionPanel();
+      return;
+    }
+    
+    // Get connected spans - check both from spans array and scene objects
+    const sceneSpans = scene.children.filter(o => o.userData.span);
+    const connectedSpans = [];
+    
+    for (const spanLine of sceneSpans) {
+      const spanA = spanLine.userData.a;
+      const spanB = spanLine.userData.b;
+      
+      // Check if this span connects to our inspected pole
+      if (spanA === inspectedPole.obj) {
+        const otherPoleData = poles.find(p => p.obj === spanB);
+        if (otherPoleData && !connectedSpans.find(s => s.pole === otherPoleData)) {
+          connectedSpans.push({ pole: otherPoleData });
+        }
+      } else if (spanB === inspectedPole.obj) {
+        const otherPoleData = poles.find(p => p.obj === spanA);
+        if (otherPoleData && !connectedSpans.find(s => s.pole === otherPoleData)) {
+          connectedSpans.push({ pole: otherPoleData });
+        }
+      }
+    }
+    
+    // Calculate angles and distances for all connected spans
+    const spanData = connectedSpans.map(span => {
+      const angle = calculateConductorAngle(inspectedPole, span.pole);
+      const distance = calculateSpanDistance(inspectedPole, span.pole);
+      return { pole: span.pole, angle, distance };
+    });
+    
+    // Update inspection panel
+    displayInspectionData(inspectedPole, spanData);
+    
+    // Draw technical diagram showing all connections
+    drawInspectionDiagram(inspectedPole, spanData);
+  }
+  
+  function calculateSpanDistance(pole1, pole2) {
+    const dx = pole2.x - pole1.x;
+    const dz = pole2.z - pole1.z;
+    return Math.sqrt(dx * dx + dz * dz);
+  }
+  
+  function closeInspectionPanel() {
+    inspectedPole = null;
+    elements.inspectionPanel?.classList.remove('active');
+  }
+  
+  function calculateConductorAngle(pole, otherPole) {
+    // Get conductor curve points using the same logic as drawSpan
+    const tensionFactor = (UIState.currentTension - 500) / (5000 - 500) * (5.0 - 0.2) + 0.2;
+    
+    const curvePoints = getConductorCurve({
+      poleA: pole.x < otherPole.x ? pole : otherPole,
+      poleB: pole.x < otherPole.x ? otherPole : pole,
+      tension: tensionFactor,
+      samples: SAMPLES,
+      lateralOffset: 0, // Use center conductor for angle calculation
+      terrainOffsetZ
+    });
+    
+    // Determine if we're looking from pole's perspective
+    const isPoleA = pole.x < otherPole.x;
+    
+    // Use a point that's ~10% along the span for better angle measurement
+    // This captures the initial departure angle more accurately
+    const sampleIndex = Math.floor(curvePoints.length * 0.1);
+    const minIndex = Math.max(3, sampleIndex); // At least use index 3
+    
+    // Get the first few points from the pole to calculate departure angle
+    let point1, point2;
+    if (isPoleA) {
+      point1 = curvePoints[0];
+      point2 = curvePoints[minIndex];
+    } else {
+      point1 = curvePoints[curvePoints.length - 1];
+      point2 = curvePoints[curvePoints.length - 1 - minIndex];
+    }
+    
+    // Calculate angle from horizontal
+    const dx = Math.abs(point2.x - point1.x);
+    const dz = Math.abs(point2.z - point1.z);
+    const horizontalDist = Math.sqrt(dx * dx + dz * dz);
+    const dy = point2.y - point1.y;
+    
+    // Angle from horizontal (negative means downward)
+    const angleRad = Math.atan2(dy, horizontalDist);
+    const angleDeg = angleRad * (180 / Math.PI);
+    
+    return {
+      degrees: angleDeg,
+      radians: angleRad,
+      sag: Math.min(...curvePoints.map(p => p.y)) // Minimum y is the lowest point
+    };
+  }
+  
+  function displayInspectionData(pole, spanData) {
+    // Update text fields
+    elements.inspectPosition.textContent = `(${pole.x.toFixed(1)}, ${pole.z.toFixed(1)})`;
+    elements.inspectHeight.textContent = `${pole.h.toFixed(1)} ft`;
+    elements.inspectBase.textContent = `${pole.base.toFixed(1)} ft`;
+    
+    // Update pole ID in diagram title with connection count
+    const diagramTitle = document.querySelector('#inspectionPanel h3');
+    if (diagramTitle) {
+      const connectionCount = spanData.length;
+      diagramTitle.textContent = `Pole #${pole.id} (${connectionCount} connection${connectionCount !== 1 ? 's' : ''})`;
+    }
+    
+    // Show data for first two connections (legacy fields)
+    if (spanData.length > 0) {
+      elements.inspectLeftAngle.textContent = `${spanData[0].angle.degrees.toFixed(2)}°`;
+      elements.inspectUpstreamDistance.textContent = `${spanData[0].distance.toFixed(1)} ft`;
+    } else {
+      elements.inspectLeftAngle.textContent = 'No conductor';
+      elements.inspectUpstreamDistance.textContent = '-';
+    }
+    
+    if (spanData.length > 1) {
+      elements.inspectRightAngle.textContent = `${spanData[1].angle.degrees.toFixed(2)}°`;
+      elements.inspectDownstreamDistance.textContent = `${spanData[1].distance.toFixed(1)} ft`;
+    } else {
+      elements.inspectRightAngle.textContent = 'No conductor';
+      elements.inspectDownstreamDistance.textContent = '-';
+    }
+  }
+  
+  function drawInspectionDiagram(pole, spanData) {
+    const canvas = elements.inspectionCanvas;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    // Clear canvas
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, width, height);
+    
+    // Set up drawing style
+    ctx.strokeStyle = '#00ffe7';
+    ctx.fillStyle = '#00ffe7';
+    ctx.lineWidth = 2;
+    ctx.font = '12px Consolas, monospace';
+    
+    // Draw grid
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < width; i += 20) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i, height);
+      ctx.stroke();
+    }
+    for (let i = 0; i < height; i += 20) {
+      ctx.beginPath();
+      ctx.moveTo(0, i);
+      ctx.lineTo(width, i);
+      ctx.stroke();
+    }
+    
+    // Pole position (center of canvas, zoomed in on top)
+    const poleX = width / 2;
+    const poleTopY = height / 2; // Center vertically for zoomed view
+    const poleVisibleHeight = 80; // Show less of the pole (zoomed in)
+    const poleBaseY = poleTopY + poleVisibleHeight;
+    
+    // Draw horizontal reference line
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(50, poleTopY);
+    ctx.lineTo(width - 50, poleTopY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    // Draw pole (zoomed to show only top portion)
+    ctx.strokeStyle = '#00ffe7';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(poleX, poleBaseY);
+    ctx.lineTo(poleX, poleTopY);
+    ctx.stroke();
+    
+    // Draw all conductors with different colors
+    const spanLength = 100; // pixels for visual representation
+    const colors = ['#ff6b6b', '#4ade80', '#fbbf24', '#a78bfa', '#f472b6', '#60a5fa'];
+    
+    spanData.forEach((span, index) => {
+      const angleRad = span.angle.radians;
+      const color = colors[index % colors.length];
+      
+      // Calculate horizontal direction based on actual pole positions
+      const dx = span.pole.x - pole.x;
+      const dz = span.pole.z - pole.z;
+      const horizontalDirection = Math.sign(dx); // -1 for left, 1 for right
+      
+      // If multiple connections on same side, offset them slightly
+      const sideIndex = spanData.slice(0, index).filter(s => {
+        const otherDx = s.pole.x - pole.x;
+        return Math.sign(otherDx) === horizontalDirection;
+      }).length;
+      
+      const lateralOffset = sideIndex * 8; // Offset by 8 pixels per additional conductor on same side
+      
+      const endX = poleX + (horizontalDirection * spanLength);
+      const endY = poleTopY - spanLength * Math.tan(angleRad) + lateralOffset;
+      
+      // Draw conductor line
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(poleX, poleTopY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+      
+      // Angle label
+      ctx.fillStyle = color;
+      ctx.font = 'bold 12px Consolas, monospace';
+      const labelX = horizontalDirection > 0 ? endX - 50 : endX + 10;
+      ctx.fillText(`${span.angle.degrees.toFixed(1)}°`, labelX, endY - 5);
+      
+      // Distance label
+      ctx.font = '10px Consolas, monospace';
+      ctx.fillText(`${span.distance.toFixed(0)}ft`, labelX, endY + 10);
+    });
+    
+    // Draw pole height label
+    ctx.fillStyle = '#00ffe7';
+    ctx.font = '11px Consolas, monospace';
+    ctx.fillText(`H: ${pole.h.toFixed(1)}'`, poleX + 15, (poleTopY + poleBaseY) / 2);
   }
 });

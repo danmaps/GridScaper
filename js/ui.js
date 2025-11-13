@@ -17,10 +17,11 @@ export const UIState = {
   costPerFoot: 10,
   maxSpanLength: 40, // Maximum distance between poles in challenge mode
   // Tool state
-  activeTool: 'both', // 'pole', 'conductor', 'both', or 'eraser'
+  activeTool: 'both', // 'pole', 'conductor', 'both', 'eraser', or 'inspect'
   poleToolActive: true,
   conductorToolActive: true,
   eraserToolActive: false,
+  inspectToolActive: false,
   // Conductor drawing state
   conductorStartPole: null, // First pole selected for conductor drawing
   conductorHoverPole: null  // Pole being hovered over during conductor drawing
@@ -68,7 +69,19 @@ export const elements = {
   get toolPanel() { return document.getElementById('toolPanel'); },
   get poleTool() { return document.getElementById('poleTool'); },
   get conductorTool() { return document.getElementById('conductorTool'); },
-  get eraserTool() { return document.getElementById('eraserTool'); }
+  get inspectTool() { return document.getElementById('inspectTool'); },
+  get eraserTool() { return document.getElementById('eraserTool'); },
+  // Inspection panel elements
+  get inspectionPanel() { return document.getElementById('inspectionPanel'); },
+  get closeInspection() { return document.getElementById('closeInspection'); },
+  get inspectionCanvas() { return document.getElementById('inspectionCanvas'); },
+  get inspectPosition() { return document.getElementById('inspectPosition'); },
+  get inspectHeight() { return document.getElementById('inspectHeight'); },
+  get inspectBase() { return document.getElementById('inspectBase'); },
+  get inspectLeftAngle() { return document.getElementById('inspectLeftAngle'); },
+  get inspectRightAngle() { return document.getElementById('inspectRightAngle'); },
+  get inspectUpstreamDistance() { return document.getElementById('inspectUpstreamDistance'); },
+  get inspectDownstreamDistance() { return document.getElementById('inspectDownstreamDistance'); }
 };
 
 export function initUI() {
@@ -280,7 +293,7 @@ export function setupUI(callbacks, dependencies) {
 }
 
 function setupToolPanel() {
-  const toolButtons = [elements.poleTool, elements.conductorTool, elements.eraserTool];
+  const toolButtons = [elements.poleTool, elements.conductorTool, elements.inspectTool, elements.eraserTool];
   
   toolButtons.forEach(button => {
     if (!button) return;
@@ -289,28 +302,56 @@ function setupToolPanel() {
       e.stopPropagation(); // Prevent click from reaching canvas
       const tool = button.dataset.tool;
       
-      if (tool === 'eraser') {
-        // Eraser is mutually exclusive
-        UIState.eraserToolActive = !UIState.eraserToolActive;
+      if (tool === 'eraser' || tool === 'inspect') {
+        // Eraser and Inspect are mutually exclusive
+        const isEraser = tool === 'eraser';
+        const isInspect = tool === 'inspect';
         
-        if (UIState.eraserToolActive) {
-          UIState.poleToolActive = false;
-          UIState.conductorToolActive = false;
-          UIState.activeTool = 'eraser';
-          elements.poleTool?.classList.remove('active');
-          elements.conductorTool?.classList.remove('active');
-          elements.eraserTool?.classList.add('active');
-        } else {
-          // If turning off eraser, default back to pole tool
-          UIState.poleToolActive = true;
-          UIState.activeTool = 'pole';
-          elements.poleTool?.classList.add('active');
-          elements.eraserTool?.classList.remove('active');
+        if (isEraser) {
+          UIState.eraserToolActive = !UIState.eraserToolActive;
+          
+          if (UIState.eraserToolActive) {
+            UIState.poleToolActive = false;
+            UIState.conductorToolActive = false;
+            UIState.inspectToolActive = false;
+            UIState.activeTool = 'eraser';
+            elements.poleTool?.classList.remove('active');
+            elements.conductorTool?.classList.remove('active');
+            elements.inspectTool?.classList.remove('active');
+            elements.eraserTool?.classList.add('active');
+          } else {
+            // If turning off eraser, default back to pole tool
+            UIState.poleToolActive = true;
+            UIState.activeTool = 'pole';
+            elements.poleTool?.classList.add('active');
+            elements.eraserTool?.classList.remove('active');
+          }
+        } else if (isInspect) {
+          UIState.inspectToolActive = !UIState.inspectToolActive;
+          
+          if (UIState.inspectToolActive) {
+            UIState.poleToolActive = false;
+            UIState.conductorToolActive = false;
+            UIState.eraserToolActive = false;
+            UIState.activeTool = 'inspect';
+            elements.poleTool?.classList.remove('active');
+            elements.conductorTool?.classList.remove('active');
+            elements.eraserTool?.classList.remove('active');
+            elements.inspectTool?.classList.add('active');
+          } else {
+            // If turning off inspect, default back to pole tool
+            UIState.poleToolActive = true;
+            UIState.activeTool = 'pole';
+            elements.poleTool?.classList.add('active');
+            elements.inspectTool?.classList.remove('active');
+          }
         }
       } else {
         // Pole and conductor can be toggled together
         UIState.eraserToolActive = false;
+        UIState.inspectToolActive = false;
         elements.eraserTool?.classList.remove('active');
+        elements.inspectTool?.classList.remove('active');
         
         if (tool === 'pole') {
           UIState.poleToolActive = !UIState.poleToolActive;
@@ -347,10 +388,60 @@ function setupToolPanel() {
   document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     
+    // Ctrl+Z: Undo
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      const undoBtn = document.getElementById('undoButton');
+      if (undoBtn && !undoBtn.disabled) {
+        undoBtn.click();
+      }
+      return;
+    }
+    
+    // Ctrl+Y or Ctrl+Shift+Z: Redo
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+      e.preventDefault();
+      const redoBtn = document.getElementById('redoButton');
+      if (redoBtn && !redoBtn.disabled) {
+        redoBtn.click();
+      }
+      return;
+    }
+    
+    // Escape: Cancel current tool (deactivate all tools)
+    if (e.key === 'Escape') {
+      // Deactivate all tools
+      if (UIState.poleToolActive || UIState.conductorToolActive || UIState.inspectToolActive || UIState.eraserToolActive) {
+        UIState.poleToolActive = false;
+        UIState.conductorToolActive = false;
+        UIState.inspectToolActive = false;
+        UIState.eraserToolActive = false;
+        
+        // Remove active class from all tool buttons
+        document.querySelectorAll('.tool-button').forEach(btn => {
+          btn.classList.remove('active');
+        });
+        
+        // Clear conductor start pole if active
+        if (UIState.conductorStartPole) {
+          UIState.conductorStartPole = null;
+        }
+      }
+      return;
+    }
+    
+    // Delete: Remove hovered/selected pole (requires custom event to main.js)
+    if (e.key === 'Delete') {
+      window.dispatchEvent(new CustomEvent('deleteHoveredPole'));
+      return;
+    }
+    
     if (e.key === 'p' || e.key === 'P') {
       elements.poleTool?.click();
     } else if (e.key === 'c' || e.key === 'C') {
       elements.conductorTool?.click();
+    } else if (e.key === 'i' || e.key === 'I') {
+      elements.inspectTool?.click();
     } else if (e.key === 'e' || e.key === 'E') {
       elements.eraserTool?.click();
     }
