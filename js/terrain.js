@@ -30,7 +30,7 @@ export function buildTerrain(scene, urlParams, customPoles, terrainSel, environm
   });
 
   terrain = new THREE.Mesh(geometry, material);
-  terrain.position.z = terrainDepth / 2 - 20;
+  terrain.position.z = 0; // Center terrain at origin to match pole coordinates
   scene.add(terrain);
   window.terrain = terrain;
 

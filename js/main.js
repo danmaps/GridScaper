@@ -1337,7 +1337,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       // Hide success panel on failure
       document.getElementById('challengeSuccess').style.display = 'none';
-      alert(`Solution Issues:\n\n${issues.join('\n')}\n\nKeep trying!`);
+      showToast(`⚠️ Solution Issues:\n${issues.join('\n')}\nKeep trying!`, 'warning', 5000);
     }
   }
   
@@ -2441,9 +2441,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const intersections = ray.intersectObject(window.terrain, true);
         const hit = intersections && intersections.length > 0 ? intersections[0] : null;
         if (hit) {
+          // Account for terrain mesh position offset
+          const terrainPosX = window.terrain.position.x || 0;
+          const terrainPosZ = window.terrain.position.z || 0;
+          
+          // Convert hit point from world coords to terrain-local coords
+          const hitLocalX = hit.point.x - terrainPosX;
+          const hitLocalZ = hit.point.z - terrainPosZ;
+          
+          // Pole position is stored relative to terrain origin (accounting for terrainOffsetZ)
+          // Calculate offset in terrain-local space
           dragOffset = {
-            x: pole.x - hit.point.x,
-            z: pole.z - (hit.point.z - terrainOffsetZ)
+            x: pole.x - hitLocalX,
+            z: pole.z - (hitLocalZ - terrainOffsetZ)
           };
         }
       }
@@ -2474,17 +2484,70 @@ document.addEventListener('DOMContentLoaded', () => {
       if (dragMode === 'position') {
         mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
         ray.setFromCamera(mouse, camera);
-        let hit = null;
+        
+        // Always calculate position, even if raycast misses terrain
+        let newX, newZ;
         
         if (window.terrain) {
           const intersections = ray.intersectObject(window.terrain, true);
-          hit = intersections && intersections.length > 0 ? intersections[0] : null;
+          const hit = intersections && intersections.length > 0 ? intersections[0] : null;
+          
+          if (hit && dragOffset) {
+            // Account for terrain mesh position offset
+            const terrainPosX = window.terrain.position.x || 0;
+            const terrainPosZ = window.terrain.position.z || 0;
+            
+            // Convert hit point from world coords to terrain-local coords
+            const hitLocalX = hit.point.x - terrainPosX;
+            const hitLocalZ = hit.point.z - terrainPosZ;
+            
+            // Apply offset in terrain-local space
+            newX = hitLocalX + dragOffset.x;
+            newZ = (hitLocalZ - terrainOffsetZ) + dragOffset.z;
+          } else if (dragOffset) {
+            // Fallback: intersect with a ground plane at current pole height
+            const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -pole.base);
+            const planeIntersect = new THREE.Vector3();
+            ray.ray.intersectPlane(groundPlane, planeIntersect);
+            
+            if (planeIntersect) {
+              const terrainPosX = window.terrain.position.x || 0;
+              const terrainPosZ = window.terrain.position.z || 0;
+              
+              const hitLocalX = planeIntersect.x - terrainPosX;
+              const hitLocalZ = planeIntersect.z - terrainPosZ;
+              
+              newX = hitLocalX + dragOffset.x;
+              newZ = (hitLocalZ - terrainOffsetZ) + dragOffset.z;
+            } else {
+              // Can't calculate position, skip this frame
+              return;
+            }
+          } else {
+            return;
+          }
+        } else {
+          return;
         }
         
-        if (hit && dragOffset) {
+        if (newX !== undefined && newZ !== undefined) {
           // Apply the offset to maintain smooth dragging
-          const newX = SNAP(hit.point.x + dragOffset.x);
-          const newZ = SNAP(hit.point.z - terrainOffsetZ + dragOffset.z);
+          
+          // Clamp to terrain bounds before snapping
+          if (window.terrain && window.terrain.geometry && window.terrain.geometry.parameters) {
+            const terrainWidth = window.terrain.geometry.parameters.width;
+            const terrainDepth = window.terrain.geometry.parameters.height;
+            const halfWidth = terrainWidth / 2;
+            const halfDepth = terrainDepth / 2;
+            
+            // Clamp X and Z to stay within terrain bounds
+            newX = Math.max(-halfWidth, Math.min(halfWidth, newX));
+            newZ = Math.max(-halfDepth, Math.min(halfDepth, newZ));
+          }
+          
+          // Now snap to grid
+          newX = SNAP(newX);
+          newZ = SNAP(newZ);
           
           // Check if any connected spans would exceed max span length
           let validMove = true;
@@ -2778,9 +2841,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       
       // Check if this was a click (not a drag)
-      const wasDragged = dragMode === 'position' && 
-                        clickStart && 
-                        (Math.abs(e.clientX - clickStart[0]) > 5 || Math.abs(e.clientY - clickStart[1]) > 5);
+      const wasDragged = (dragMode === 'position' && 
+                         clickStart && 
+                         (Math.abs(e.clientX - clickStart[0]) > 5 || Math.abs(e.clientY - clickStart[1]) > 5)) ||
+                         dragMode === 'height'; // Height changes are also considered drags
       
       const shouldInspect = UIState.inspectToolActive && clickStart && !wasDragged;
       const shouldErase = UIState.eraserToolActive && clickStart && !wasDragged;
@@ -4033,13 +4097,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }).catch(err => {
         console.warn('Failed to copy to clipboard:', err);
-        // Fallback: show the URL in an alert
-        alert('Copy this URL:\n' + fullUrl);
+        // Fallback: show the URL in a toast
+        showToast('📋 Link ready! Check the copy link area below the map.', 'success', 4000);
       });
       
     } catch (error) {
       console.error('Error generating scenario link:', error);
-      alert('Error generating link. Please try again.');
+      showToast('❌ Error generating link. Please try again.', 'error', 3000);
     }
   }
 
@@ -4047,49 +4111,80 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       // Get current terrain info
       const currentTerrain = window.terrain;
+      const terrainGeometry = currentTerrain?.geometry;
+      
       const terrainData = {
         dimensions: {
-          width: currentTerrain ? currentTerrain.geometry.parameters.width : 100,
-          depth: currentTerrain ? currentTerrain.geometry.parameters.height : 100
+          width: terrainGeometry?.parameters?.width || 100,
+          depth: terrainGeometry?.parameters?.height || 100,
+          widthSegments: terrainGeometry?.parameters?.widthSegments || SEG,
+          heightSegments: terrainGeometry?.parameters?.heightSegments || SEG
         },
         offset: {
-          x: currentTerrain ? currentTerrain.position.x : 0,
-          z: currentTerrain ? currentTerrain.position.z : terrainOffsetZ
+          x: currentTerrain?.position.x || 0,
+          y: currentTerrain?.position.y || 0,
+          z: currentTerrain?.position.z || terrainOffsetZ
+        },
+        rotation: {
+          x: currentTerrain?.rotation.x || 0,
+          y: currentTerrain?.rotation.y || 0,
+          z: currentTerrain?.rotation.z || 0
         },
         type: elements.terrainSelect?.value || 'flat',
         gridSize: {
           x: poles.length > 0 ? 20 : 100, // Based on buildTerrain logic
           y: 100
         },
-        terrainOffsetZ: terrainOffsetZ // Include the actual terrain offset
+        terrainOffsetZ: terrainOffsetZ, // Include the actual terrain offset
+        scale: {
+          x: currentTerrain?.scale.x || 1,
+          y: currentTerrain?.scale.y || 1,
+          z: currentTerrain?.scale.z || 1
+        }
       };
 
-      // If poles exist, capture the elevation interpolation data
+      // Capture surface elevation data
       const surfaceData = {
         hasCustomGround: customGround !== null,
-        elevationProfile: null
+        elevationProfile: null,
+        terrainType: elements.terrainSelect?.value || 'flat'
       };
 
-      if (poles.length > 0 && customGround) {
+      if (poles.length > 0) {
         // Sample the terrain at multiple points to capture the elevation profile
         const minZ = Math.min(...poles.map(p => p.z));
         const maxZ = Math.max(...poles.map(p => p.z));
-        const sampleCount = 50; // Number of samples along Z-axis
+        const minX = Math.min(...poles.map(p => p.x));
+        const maxX = Math.max(...poles.map(p => p.x));
+        
+        const sampleCount = 50; // Number of samples along each axis
         const elevationProfile = [];
         
+        // Sample along the center line (Z-axis)
         for (let i = 0; i <= sampleCount; i++) {
           const z = minZ + (maxZ - minZ) * (i / sampleCount);
           const elevation = hAt(0, z); // Sample at x=0 (center line)
-          elevationProfile.push({ z, elevation });
+          elevationProfile.push({ x: 0, z, elevation });
         }
         
+        // Also sample a few cross-sections for better reconstruction
+        const crossSections = [-10, -5, 5, 10]; // X positions to sample
+        crossSections.forEach(x => {
+          for (let i = 0; i <= sampleCount; i++) {
+            const z = minZ + (maxZ - minZ) * (i / sampleCount);
+            const elevation = hAt(x, z);
+            elevationProfile.push({ x, z, elevation });
+          }
+        });
+        
         surfaceData.elevationProfile = elevationProfile;
-        surfaceData.bounds = { minZ, maxZ };
+        surfaceData.bounds = { minX, maxX, minZ, maxZ };
+        surfaceData.sampleCount = sampleCount;
       }
 
       // Create scene data object
       const sceneData = {
-        version: "1.2", // Increment version to indicate pole ID support
+        version: "1.3", // Increment version to include spans
         timestamp: new Date().toISOString(),
         poles: poles.map(pole => ({
           id: pole.id,
@@ -4097,6 +4192,11 @@ document.addEventListener('DOMContentLoaded', () => {
           z: pole.z,
           height: pole.h,
           elevation: pole.base
+        })),
+        spans: spans.map(span => ({
+          aId: span.a.id,
+          bId: span.b.id,
+          type: span.type
         })),
         terrain: terrainData,
         surface: surfaceData,
@@ -4138,10 +4238,11 @@ document.addEventListener('DOMContentLoaded', () => {
       URL.revokeObjectURL(url);
       
       console.log('Scene exported successfully:', sceneData);
+      showToast('✅ Scene exported successfully!', 'success', 2000);
       
     } catch (error) {
       console.error('Error exporting scene:', error);
-      alert('Error exporting scene. Please check the console for details.');
+      showToast('❌ Error exporting scene. Check console for details.', 'error', 3000);
     }
   }
 
@@ -4206,24 +4307,33 @@ document.addEventListener('DOMContentLoaded', () => {
       // Restore terrain and surface data if available (v1.1+)
       if (sceneData.terrain && sceneData.surface && sceneData.version !== "1.0") {
         // Restore custom ground function if elevation profile exists
-        if (sceneData.surface.hasCustomGround && sceneData.surface.elevationProfile) {
+        if (sceneData.surface.elevationProfile && sceneData.surface.elevationProfile.length > 0) {
           const elevationProfile = sceneData.surface.elevationProfile;
           const bounds = sceneData.surface.bounds;
           
           customGround = (x, z) => {
-            // Clamp z to the bounds of the elevation profile
-            if (z <= bounds.minZ) return elevationProfile[0].elevation;
-            if (z >= bounds.maxZ) return elevationProfile[elevationProfile.length - 1].elevation;
+            // Find nearest samples at this Z position across different X values
+            const relevantPoints = elevationProfile.filter(p => 
+              Math.abs(p.z - z) < (bounds.maxZ - bounds.minZ) / sceneData.surface.sampleCount * 2
+            );
             
-            // Find the segment and interpolate
-            for (let i = 1; i < elevationProfile.length; i++) {
-              if (z <= elevationProfile[i].z) {
-                const t = (z - elevationProfile[i - 1].z) / (elevationProfile[i].z - elevationProfile[i - 1].z);
-                return elevationProfile[i - 1].elevation * (1 - t) + elevationProfile[i].elevation * t;
-              }
+            if (relevantPoints.length === 0) {
+              // Fallback: use first or last point
+              if (z <= bounds.minZ) return elevationProfile[0].elevation;
+              if (z >= bounds.maxZ) return elevationProfile[elevationProfile.length - 1].elevation;
+              return 0;
             }
-            return elevationProfile[elevationProfile.length - 1].elevation;
+            
+            // Find the two closest points in Z and interpolate considering X as well
+            const sortedByZ = relevantPoints.sort((a, b) => Math.abs(a.z - z) - Math.abs(b.z - z));
+            const sortedByX = sortedByZ.slice(0, 4).sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x));
+            
+            // Use the closest point's elevation
+            return sortedByX[0].elevation;
           };
+        } else if (sceneData.surface.hasCustomGround) {
+          // Fallback for older exports without proper elevation data
+          customGround = null;
         } else {
           customGround = null;
         }
@@ -4265,7 +4375,7 @@ document.addEventListener('DOMContentLoaded', () => {
           SEG, 
           hAt, 
           addGridLines, 
-          addDefaultTrees, 
+          null, // No tree function - trees aren't used anymore
           null
         );
         
@@ -4303,6 +4413,25 @@ document.addEventListener('DOMContentLoaded', () => {
           nextPoleId = poleData.id + 1;
         }
       });
+      
+      // Restore spans if available (v1.3+)
+      if (sceneData.spans && Array.isArray(sceneData.spans)) {
+        showLoadingOverlay('Importing conductors...');
+        sceneData.spans.forEach(spanData => {
+          const poleA = poles.find(p => p.id === spanData.aId);
+          const poleB = poles.find(p => p.id === spanData.bId);
+          
+          if (poleA && poleB) {
+            spans.push({
+              a: poleA,
+              b: poleB,
+              type: spanData.type
+            });
+          } else {
+            console.warn('Could not restore span - pole not found:', spanData);
+          }
+        });
+      }
       
       // Import settings
       const settings = sceneData.settings;
@@ -4372,13 +4501,13 @@ document.addEventListener('DOMContentLoaded', () => {
       // Success!
       setTimeout(() => {
         hideLoadingOverlay();
-        alert(`Scene imported successfully!\n${sceneData.poles.length} poles loaded.`);
+        showToast(`✅ Scene imported! ${sceneData.poles.length} poles loaded.`, 'success', 3000);
       }, 100); // Small delay to show "Rebuilding scene..." message
       
     } catch (error) {
       hideLoadingOverlay();
       console.error('Error importing scene:', error);
-      alert(`Error importing scene:\n${error.message}`);
+      showToast(`❌ Error importing scene: ${error.message}`, 'error', 4000);
     }
   }
 
@@ -4408,13 +4537,13 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // Validate file size (max 10MB)
       if (file.size > 10 * 1024 * 1024) {
-        alert('File size too large. Please select a file smaller than 10MB.');
+        showToast('⚠️ File too large. Maximum size is 10MB.', 'warning', 3000);
         return;
       }
       
       // Validate file type
       if (!file.type.includes('json') && !file.name.toLowerCase().endsWith('.json')) {
-        alert('Please select a valid JSON file.');
+        showToast('⚠️ Please select a valid JSON file.', 'warning', 2500);
         return;
       }
       
@@ -4432,19 +4561,19 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (error) {
               hideLoadingOverlay();
               console.error('File reading error:', error);
-              alert('Error reading file. Please ensure it\'s a valid GridScaper scene file.');
+              showToast('❌ Error reading file. Please ensure it\'s a valid GridScaper scene file.', 'error', 3000);
             }
           }, 50);
         } catch (error) {
           hideLoadingOverlay();
           console.error('File reading error:', error);
-          alert('Error reading file. Please ensure it\'s a valid GridScaper scene file.');
+          showToast('❌ Error reading file. Please ensure it\'s a valid GridScaper scene file.', 'error', 3000);
         }
       };
       
       reader.onerror = function() {
         hideLoadingOverlay();
-        alert('Error reading file. Please try again.');
+        showToast('❌ Error reading file. Please try again.', 'error', 3000);
       };
       
       reader.readAsText(file);
@@ -4540,18 +4669,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // Success message
         setTimeout(() => {
           hideLoadingOverlay();
-          alert(`✅ GIS data imported successfully!\n\n` +
-                `📍 ${gisData.poles.length} poles imported\n` +
-                `📏 Scene dimensions: ${gisData.metadata.sceneSize.width}×${gisData.metadata.sceneSize.depth} ft\n` +
-                `🧭 Overall bearing: ${gisData.metadata.overallBearing}°\n` +
-                `⛰️ Elevation range: ${gisData.metadata.elevationRange.toFixed(1)} ft\n` +
-                `🔄 Scale factor: ${gisData.metadata.scaleFactor.toFixed(2)}x`);
+          showToast(`✅ GIS data imported! ${gisData.poles.length} poles, ${gisData.metadata.sceneSize.width}×${gisData.metadata.sceneSize.depth} ft`, 'success', 4000);
         }, 100);
         
       } catch (error) {
         hideLoadingOverlay();
         console.error('Error importing GIS data:', error);
-        alert(`❌ Error importing GIS data:\n${error.message}`);
+        showToast(`❌ Error importing GIS data: ${error.message}`, 'error', 4000);
       }
     });
   }
@@ -4618,19 +4742,13 @@ document.addEventListener('DOMContentLoaded', () => {
           hideLoadingOverlay();
           
           const { metadata } = elevationData;
-          alert(`✅ Elevation profile imported successfully!\n\n` +
-                `📊 ${metadata.points} elevation points\n` +
-                `📏 Profile length: ${metadata.profileLength?.toFixed(1) || 'N/A'} ft\n` +
-                `⛰️ Elevation range: ${metadata.elevationRange.min.toFixed(1)} - ${metadata.elevationRange.max.toFixed(1)} ft\n` +
-                `📐 Height span: ${metadata.elevationRange.span.toFixed(1)} ft\n` +
-                `🎯 Scene size: ${metadata.sceneWidth} × ${metadata.sceneDepth} ft\n\n` +
-                `👆 Click anywhere on the terrain to place poles!`);
+          showToast(`✅ Elevation profile imported! ${metadata.points} points, ${metadata.sceneWidth}×${metadata.sceneDepth} ft`, 'success', 4000);
         }, 100);
         
       } catch (error) {
         hideLoadingOverlay();
         console.error('Error importing elevation profile:', error);
-        alert(`❌ Error importing elevation profile:\n${error.message}`);
+        showToast(`❌ Error importing elevation profile: ${error.message}`, 'error', 4000);
       }
     });
   }
@@ -4690,13 +4808,13 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Validate file type
         if (!file.type.includes('json') && !file.name.toLowerCase().endsWith('.json')) {
-          alert('Please drop a valid JSON file.');
+          showToast('⚠️ Please drop a valid JSON file.', 'warning', 2500);
           return;
         }
 
         // Validate file size (max 10MB)
         if (file.size > 10 * 1024 * 1024) {
-          alert('File size too large. Please select a file smaller than 10MB.');
+          showToast('⚠️ File too large. Maximum size is 10MB.', 'warning', 3000);
           return;
         }
 
@@ -4714,19 +4832,19 @@ document.addEventListener('DOMContentLoaded', () => {
               } catch (error) {
                 hideLoadingOverlay();
                 console.error('File reading error:', error);
-                alert('Error reading file. Please ensure it\'s a valid GridScaper scene file.');
+                showToast('❌ Error reading file. Please ensure it\'s a valid GridScaper scene file.', 'error', 3000);
               }
             }, 50);
           } catch (error) {
             hideLoadingOverlay();
             console.error('File reading error:', error);
-            alert('Error reading file. Please ensure it\'s a valid GridScaper scene file.');
+            showToast('❌ Error reading file. Please ensure it\'s a valid GridScaper scene file.', 'error', 3000);
           }
         };
 
         reader.onerror = function() {
           hideLoadingOverlay();
-          alert('Error reading file. Please try again.');
+          showToast('❌ Error reading file. Please try again.', 'error', 3000);
         };
 
         reader.readAsText(file);
@@ -4920,7 +5038,7 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.inspectBase.textContent = `${pole.base.toFixed(1)} ft`;
     
     // Update pole ID in diagram title with connection count
-    const diagramTitle = document.querySelector('#inspectionPanel h3');
+    const diagramTitle = document.getElementById('inspectionPoleTitle');
     if (diagramTitle) {
       const connectionCount = spanData.length;
       diagramTitle.textContent = `Pole #${pole.id} (${connectionCount} connection${connectionCount !== 1 ? 's' : ''})`;
@@ -4969,11 +5087,6 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.beginPath();
     ctx.arc(topPoleX, topPoleY, 6, 0, Math.PI * 2);
     ctx.fill();
-    
-    // Label: TOP VIEW
-    ctx.fillStyle = '#888';
-    ctx.font = 'bold 10px Consolas, monospace';
-    ctx.fillText('TOP VIEW', 10, 15);
     
     // Draw compass directions
     ctx.fillStyle = '#555';
@@ -5054,11 +5167,6 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.moveTo(sidePoleX, sidePoleBaseY);
     ctx.lineTo(sidePoleX, sidePoleTopY);
     ctx.stroke();
-    
-    // Label: SIDE VIEW
-    ctx.fillStyle = '#888';
-    ctx.font = 'bold 10px Consolas, monospace';
-    ctx.fillText('SIDE VIEW', 10, sectionHeight + 15);
     
     // Draw conductors in side view (alternating left/right)
     const sideSpanLength = 100; // Reduced for better zoom

@@ -721,7 +721,7 @@ body.dark-mode {
       border: 2px solid var(--panel-border);
       border-radius: 12px;
       padding: 0;
-      width: 450px;
+      width: 280px;
       z-index: 1100;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
       display: none;
@@ -771,21 +771,25 @@ body.dark-mode {
     }
     
     .inspection-content {
-      padding: 18px;
+      padding: 16px;
     }
     
     .inspection-diagram {
       margin-bottom: 16px;
-      border: 1px solid var(--panel-border);
       border-radius: 6px;
       overflow: hidden;
       background: #000;
+      padding: 0;
     }
     
     #inspectionCanvas {
       display: block;
-      width: 100%;
-      height: auto;
+      width: 220px;
+      height: 440px;
+      border: 1px solid #00ffe733;
+      border-radius: 4px;
+      background: #0a0a0a;
+      margin: 0 auto;
     }
     
     .inspection-data {
@@ -1154,9 +1158,15 @@ body.dark-mode {
       <button id="closeInspection" class="close-inspection-btn">×</button>
     </div>
     <div class="inspection-content">
+      <h3 id="inspectionPoleTitle" style="margin: 0 0 10px 0; color: #00ffe7; font-size: 16px; text-align: center;">Pole #-</h3>
       <div class="inspection-diagram">
-        <h3 style="margin: 0 0 10px 0; color: #00ffe7; font-size: 16px; text-align: center;">Pole #-</h3>
-        <canvas id="inspectionCanvas" width="150" height="300"></canvas>
+        <div style="text-align: center; margin-bottom: 8px;">
+          <span style="color: #888; font-size: 11px; font-weight: bold; font-family: Consolas, monospace; letter-spacing: 1px;">TOP VIEW</span>
+        </div>
+        <canvas id="inspectionCanvas" width="220" height="440"></canvas>
+        <div style="text-align: center; margin-top: 8px;">
+          <span style="color: #888; font-size: 11px; font-weight: bold; font-family: Consolas, monospace; letter-spacing: 1px;">SIDE VIEW</span>
+        </div>
       </div>
       <div class="inspection-data">
         <div class="inspection-row">
