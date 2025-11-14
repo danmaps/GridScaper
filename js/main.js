@@ -2700,16 +2700,27 @@ document.addEventListener('DOMContentLoaded', () => {
       const isSameGroup = hoverSpan && spanGroup.includes(hoverSpan);
       
       if (!isSameGroup) {
-        // Reset previous span group
+        // Reset previous span group - store their original material state first
         if (hoverSpan) {
           const prevGroup = spanLines.filter(line =>
             line.userData.a === hoverSpan.userData.a &&
             line.userData.b === hoverSpan.userData.b
           );
-          prevGroup.forEach(line => line.material = mGood);
+          // Restore original material based on stored state
+          prevGroup.forEach(line => {
+            if (line.userData.originalMaterial) {
+              line.material = line.userData.originalMaterial;
+              delete line.userData.originalMaterial;
+            }
+          });
         }
         
-        // Highlight all 3 strands of the new span
+        // Store original materials before highlighting
+        spanGroup.forEach(line => {
+          line.userData.originalMaterial = line.material;
+        });
+        
+        // Highlight all 3 strands of the new span with blue glow
         hoverSpan = hitSpan;
         const isDark = document.body.classList.contains('dark-mode');
         const highlightColor = isDark ? 0x00ffe7 : 0x4169e1; // Light blue for dark, royal blue for light
@@ -2727,7 +2738,13 @@ document.addEventListener('DOMContentLoaded', () => {
           line.userData.a === hoverSpan.userData.a &&
           line.userData.b === hoverSpan.userData.b
         );
-        spanGroup.forEach(line => line.material = mGood);
+        // Restore original material based on stored state
+        spanGroup.forEach(line => {
+          if (line.userData.originalMaterial) {
+            line.material = line.userData.originalMaterial;
+            delete line.userData.originalMaterial;
+          }
+        });
         hoverSpan = null;
       }
     }
@@ -3930,31 +3947,21 @@ document.addEventListener('DOMContentLoaded', () => {
           terrainOffsetZ
         });
 
-        // Find the point with maximum sag (should be around the middle)
-        let maxSagPoint = curvePoints[0];
-        let maxSagIndex = 0;
-        let maxSagDistance = 0;
-
-        curvePoints.forEach((point, index) => {
-          // Calculate the straight line height at this position
-          const t = index / (curvePoints.length - 1);
-          const straightLineHeight = crossarmHeightA + (crossarmHeightB - crossarmHeightA) * t;
-          const sagDistance = straightLineHeight - point.y;
-          
-          if (sagDistance > maxSagDistance) {
-            maxSagDistance = sagDistance;
-            maxSagPoint = point;
-            maxSagIndex = index;
-          }
-        });
-
-        // Create vertical sag line
-        const t = maxSagIndex / (curvePoints.length - 1);
+        // Measure sag at midpoint (industry standard practice)
+        // Find the point closest to the horizontal midpoint of the span
+        const midpointIndex = Math.floor(curvePoints.length / 2);
+        const sagPoint = curvePoints[midpointIndex];
+        const t = 0.5; // Midpoint
+        
+        // Calculate sag as vertical distance from straight line at midpoint
         const straightLineHeight = crossarmHeightA + (crossarmHeightB - crossarmHeightA) * t;
+        const sagDistance = straightLineHeight - sagPoint.y;
+
+        // Create vertical sag line at midpoint
         
         const sagLinePoints = [
-          new THREE.Vector3(maxSagPoint.x, straightLineHeight, maxSagPoint.z),
-          new THREE.Vector3(maxSagPoint.x, maxSagPoint.y, maxSagPoint.z)
+          new THREE.Vector3(sagPoint.x, straightLineHeight, sagPoint.z),
+          new THREE.Vector3(sagPoint.x, sagPoint.y, sagPoint.z)
         ];
         const sagLineGeometry = new THREE.BufferGeometry().setFromPoints(sagLinePoints);
         const sagLineMaterial = new THREE.LineBasicMaterial({ 
@@ -3966,7 +3973,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const sagLine = new THREE.Line(sagLineGeometry, sagLineMaterial);
 
         // Create DOM label for sag measurement
-        const sagText = `${maxSagDistance.toFixed(1)}ft sag`;
+        const sagText = `${sagDistance.toFixed(1)}ft sag`;
         const labelElement = document.createElement('div');
         labelElement.textContent = sagText;
         labelElement.style.position = 'absolute';
@@ -3993,9 +4000,9 @@ document.addEventListener('DOMContentLoaded', () => {
           sagLine: sagLine,
           label: labelElement,
           labelPosition: new THREE.Vector3(
-            maxSagPoint.x,
-            maxSagPoint.y - 1, // Slightly below the sag point
-            maxSagPoint.z
+            sagPoint.x,
+            sagPoint.y - 1, // Slightly below the sag point
+            sagPoint.z
           )
         });
 
@@ -4353,38 +4360,43 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       });
       
-      // Rebuild terrain first with imported pole data to establish proper terrainOffsetZ
-      if (tempPoles.length > 0) {
-        showLoadingOverlay('Rebuilding terrain surface...');
-        
-        // Convert poles to the format expected by buildTerrain
-        const customPolesForTerrain = tempPoles.map(pole => ({
-          x: pole.x,
-          z: pole.z,
-          h: pole.h,
-          elev: pole.base
-        }));
-        
-        // Rebuild terrain with imported pole data
-        const terrain = importedBuildTerrain(
-          scene, 
-          new URLSearchParams(), // Empty URL params since we have all the data
-          customPolesForTerrain, 
-          elements.terrainSelect, 
-          null, 
-          SEG, 
-          hAt, 
-          addGridLines, 
-          null, // No tree function - trees aren't used anymore
-          null
-        );
-        
-        fitGroundInView(camera, controls, terrain);
-        const darkModeSync = isDarkModeActive();
-        scene.background = darkModeSync ? new THREE.Color('#0a1014') : new THREE.Color(0x87ceeb);
-        updateSceneLabelStylesForDarkMode(darkModeSync);
-        toggleGridVisibility(UIState.showGrid);
+      // Rebuild terrain with imported dimensions
+      showLoadingOverlay('Rebuilding terrain surface...');
+      
+      // Convert poles to the format expected by buildTerrain
+      const customPolesForTerrain = tempPoles.map(pole => ({
+        x: pole.x,
+        z: pole.z,
+        h: pole.h,
+        elev: pole.base
+      }));
+      
+      // Create URL params with saved terrain dimensions
+      const urlParams = new URLSearchParams();
+      if (sceneData.terrain && sceneData.terrain.dimensions) {
+        urlParams.set('size-x', sceneData.terrain.dimensions.width.toString());
+        urlParams.set('size-y', sceneData.terrain.dimensions.depth.toString());
       }
+      
+      // Rebuild terrain with imported pole data and dimensions
+      const terrain = importedBuildTerrain(
+        scene, 
+        urlParams,
+        customPolesForTerrain, 
+        elements.terrainSelect, 
+        null, 
+        SEG, 
+        hAt, 
+        addGridLines, 
+        null, // No tree function - trees aren't used anymore
+        null
+      );
+      
+      fitGroundInView(camera, controls, terrain);
+      const darkModeSync = isDarkModeActive();
+      scene.background = darkModeSync ? new THREE.Color('#0a1014') : new THREE.Color(0x87ceeb);
+      updateSceneLabelStylesForDarkMode(darkModeSync);
+      toggleGridVisibility(UIState.showGrid);
       
       // Now import poles with correct terrainOffsetZ
       showLoadingOverlay('Importing poles...');
