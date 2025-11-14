@@ -1,10 +1,10 @@
-# GridScaper
+# Gridscaper
 
-🎮 **[Try GridScaper Live](https://danmaps.github.io/GridScaper/)**
+🎮 **[Try Gridscaper Live](https://danmaps.github.io/GridScaper/)**
 
 ## Overview
 
-GridScaper is a **fun and educational** browser-based tool for learning power line engineering concepts! This interactive simulation helps you understand fundamental principles like:
+Gridscaper is a **fun and educational** browser-based tool for learning power line engineering concepts! Inspired by [Townscaper](https://oskarstalberg.com/Townscaper/), this interactive simulation helps you understand fundamental principles like:
 
 🔗 **Catenary Curves & Sag Calculations** - Visualize how conductor tension affects line sag  
 ⚡ **Clearance Requirements** - Learn safety distance standards with real-time feedback  
@@ -46,7 +46,7 @@ No production or confidential data is used. See RULES.md for details.
 
 ### Option 1: Use Online (Recommended)
 
-**[Launch GridScaper](https://danmaps.github.io/GridScaper/)** - No installation required!
+**[Launch Gridscaper](https://danmaps.github.io/GridScaper/)** - No installation required!
 
 ### Option 2: Run Locally
 
@@ -73,7 +73,7 @@ python -m http.server 8080
 
 ## How It Meets Judging Criteria
 
-| Criterion          | How GridScaper+ Delivers                                                       |
+| Criterion          | How Gridscaper Delivers                                                       |
 | ------------------ | ------------------------------------------------------------------------------ |
 | **Business Value** | Visual safety + cost feedback accelerates planning decisions.                  |
 | **Impact**         | Enables quick "what-if" siting discussions with mock data.                     |
@@ -103,7 +103,7 @@ Future enhancements could include:
 
 ## 📐 Catenary Math: The Physics Behind the Sag
 
-Power lines don't hang in a parabolic arc—they form a **catenary curve**, the natural shape of a flexible cable suspended under its own weight. GridScaper uses true catenary mathematics to realistically simulate conductor sag.
+Power lines don't hang in a parabolic arc—they form a **catenary curve**, the natural shape of a flexible cable suspended under its own weight. Gridscaper uses true catenary mathematics to realistically simulate conductor sag.
 
 ### Catenary vs. Parabola
 
@@ -114,7 +114,7 @@ Power lines don't hang in a parabolic arc—they form a **catenary curve**, the 
 | **Real-World Examples** | Power lines, hanging chains | Suspension bridge cables under deck load |
 | **Sag Behavior** | More gradual near supports, steeper in middle | Symmetric, quadratic curve |
 
-### How GridScaper Computes Conductor Sag
+### How Gridscaper Computes Conductor Sag
 
 The app uses **true catenary equations** with the hyperbolic cosine function to accurately model conductor behavior. Here's how it works:
 
@@ -140,7 +140,7 @@ Given a desired sag *S* (maximum vertical drop at midspan), we solve for `a` usi
 S = a·(cosh(L/(2a)) - 1)
 ```
 
-GridScaper uses the **Newton-Raphson method** to iteratively solve this transcendental equation:
+Gridscaper uses the **Newton-Raphson method** to iteratively solve this transcendental equation:
 
 ```javascript
 function solveCatenaryParameter(span, targetSag, maxIterations = 20) {
@@ -211,7 +211,7 @@ This true catenary model helps you explore engineering trade-offs with physicall
 
 ## ⚔️ Challenge Mode (Budget + Objectives)
 
-Challenge Mode turns GridScaper into a mini planning puzzle: connect power from the green substation cube to the blue customer cube efficiently, safely, and under budget.
+Challenge Mode turns Gridscaper into a mini planning puzzle: connect power from the green substation cube to the blue customer cube efficiently, safely, and under budget.
 
 ### How to Start / Exit
 
@@ -270,69 +270,6 @@ Costs, thresholds, and connection range are simplified approximations for learni
 ### Basic Interaction
 
 * **Add Pole**: Left-click on the terrain.
-* **Delete Pole**: Right-click on a pole.
-* **Adjust New Pole Height**: Use the "New pole height" slider.
-* **Select Terrain Type**: Use the "Terrain" dropdown menu.
-* **Adjust Line Tension**: Use the "Tension" slider.
-* **Toggle Grid Visibility**: Use the "Grid" checkbox.
-* **Change Setting**: Use the "Setting" dropdown (Residential, Commercial, Urban, Rural). This primarily affects building generation.
-* **Change Environment**: Use the "Environment" dropdown (Coastal, Mountain, Desert, City). This affects terrain color, vegetation, and other environmental props.
-* **Change Equipment Type**: Use the "Equipment" dropdown (Distribution, Sub Transmission, Bulk Transmission, Generation). This changes the color of poles and crossarms.
-* **Download Scene Data**: Click the "Download" button to export your current scene as a JSON file. This includes pole positions, heights, elevations, terrain surface data, and all UI settings.
-* **Import Scene**: Click the "Import Scene" button to load a previously exported scene file, or simply drag and drop a .json file onto the application. The import will restore poles, terrain elevation profile, and all settings exactly as they were saved. A loading animation indicates progress during file processing. The canvas is completely cleared before import to ensure no visual artifacts remain.
-* **Copy Scenario Link**: Click the "Copy Link" button to generate a shareable URL with your current scene configuration.
-* **Clear Scene**: Click the "Clear Scene" button to remove all poles and spans.
-* **Navigate**: Use orbit controls (typically left-click and drag to orbit, mouse wheel to zoom, right-click and drag to pan).
-* **Drag Pole Position**: Click and drag an existing pole to move it along the terrain.
-* **Adjust Existing Pole Height**: Alt-click (Option-click on Mac) and drag an existing pole up or down.
-
-### Using URL Parameters
-
-GridScaper supports URL parameters to customize the simulation upon loading. Parameters are added to the index.html URL after a `?`, with multiple parameters separated by an `&`.
-
-**Available Parameters**:
-
-* **Grid Dimensions** (Note: size-x, size-y appear in url-parameters-guide.md but are not explicitly used in index.html to define terrain/grid plane size; terrain size is fixed in index.html):
-  * While the guide mentions size-x and size-y, the index.html currently uses a fixed SIZE for terrain generation. Pole parameters will work within this fixed terrain.
-* **Pole Configuration**:
-  * `elevation`: **New simplified parameter** - Comma-separated list of ground elevations for terrain profile only (creates rolling terrain without placing poles).
-  * `poles-distances`: (Legacy) Comma-separated list of distances along the Z-axis for poles.
-  * `poles-heights`: (Legacy) Comma-separated list of heights for each pole (in feet).
-  * `poles-elevations`: (Legacy) Comma-separated list of ground elevations at each pole.
-
-**Important Notes for URL Parameters**:
-
-* **Simplified `elevation` parameter**: Creates a terrain elevation profile with points spaced every 10 feet. Does NOT place poles - you can add poles interactively after the terrain loads.
-* **Optional `width` parameter**: Sets the terrain width in feet (default: 20). Works with the `elevation` parameter to control terrain dimensions.
-* **Legacy parameters**: All three pole parameters (poles-distances, poles-heights, and poles-elevations) must be provided together and have the same number of values. These DO place poles with the terrain.
-* The simplified `elevation` parameter takes precedence over legacy parameters if both are present.
-* Poles are positioned along the Z-axis.
-* The terrain will automatically adjust to create a smooth sloped surface through all pole locations defined by the elevations.
-* You can still interact with the simulation (add/remove poles, adjust tension, etc.) after it's initialized with URL parameters.
-
-**Examples**:
-
-* Rolling Hills terrain (new simplified format - terrain only, no poles): [https://danmaps.github.io/GridScaper/?elevation=0,10,0,20,10,5,0,5,10,20,30,20,10,5,0](https://danmaps.github.io/GridScaper/?elevation=0,10,0,20,10,5,0,5,10,20,30,20,10,5,0)
-* Custom width terrain (40ft wide): [https://danmaps.github.io/GridScaper/?elevation=0,10,0,20,10,5,0,5,10,20,30,20,10,5,0&width=40](https://danmaps.github.io/GridScaper/?elevation=0,10,0,20,10,5,0,5,10,20,30,20,10,5,0&width=40)
-* Basic Line Profile with Three Poles (legacy - includes poles): [https://danmaps.github.io/GridScaper/?poles-distances=0,20,40&poles-heights=10,15,12&poles-elevations=0,5,2](https://danmaps.github.io/GridScaper/?poles-distances=0,20,40&poles-heights=10,15,12&poles-elevations=0,5,2)
-* Valley Crossing (legacy - includes poles): [https://danmaps.github.io/GridScaper/?poles-distances=0,25,50&poles-heights=20,25,20&poles-elevations=10,0,10](https://danmaps.github.io/GridScaper/?poles-distances=0,25,50&poles-heights=20,25,20&poles-elevations=10,0,10)
-
-### JSON Export Format
-
-GridScaper exports scenes in JSON format that includes comprehensive terrain data to prevent "floating poles" when importing:
-
-* **Pole Data**: Position, height, and elevation for each pole
-* **Terrain Surface**: Elevation profile and interpolation data for smooth terrain recreation
-* **UI Settings**: All slider values, dropdown selections, and display options
-* **Version Information**: File format version for backward compatibility
-
-The enhanced format (v1.1+) captures the exact terrain surface geometry, ensuring that imported scenes maintain their original appearance with proper pole-to-ground relationships. This prevents "floating poles" that can occur when terrain surface data is missing.
-
-## Usage Guide
-
-### Controls and Interactions
-
-* **Add Pole**: Left-click on the terrain.
 
 * **Delete Pole**: Right-click on a pole.
 
@@ -358,7 +295,7 @@ The enhanced format (v1.1+) captures the exact terrain surface geometry, ensurin
 
 ### URL Parameters
 
-GridScaper supports URL parameters to customize the simulation upon loading. Parameters are added to the index.html URL after a `?`, with multiple parameters separated by an `&`.
+Gridscaper supports URL parameters to customize the simulation upon loading. Parameters are added to the index.html URL after a `?`, with multiple parameters separated by an `&`.
 
 **Available Parameters**:
 

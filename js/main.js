@@ -56,8 +56,12 @@ document.addEventListener('DOMContentLoaded', () => {
     states: [],
     currentIndex: -1,
     maxSize: 50,
+    isRestoring: false, // Flag to prevent state capture during undo/redo
     
     captureState() {
+      // Don't capture state while restoring from undo/redo
+      if (this.isRestoring) return;
+      
       // Create a deep copy of current poles state
       const polesState = poles.map(p => ({
         id: p.id,
@@ -110,7 +114,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!this.canUndo()) return;
       
       this.currentIndex--;
+      this.isRestoring = true;
       this.restoreState(this.states[this.currentIndex]);
+      this.isRestoring = false;
       updateUndoRedoButtons();
     },
     
@@ -118,7 +124,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!this.canRedo()) return;
       
       this.currentIndex++;
+      this.isRestoring = true;
       this.restoreState(this.states[this.currentIndex]);
+      this.isRestoring = false;
       updateUndoRedoButtons();
     },
     
@@ -3225,12 +3233,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Ctrl+Z or Cmd+Z for undo
     if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
       e.preventDefault();
-      history.undo();
+      elements.undoButton?.click();
     }
     // Ctrl+Y or Ctrl+Shift+Z or Cmd+Shift+Z for redo
     if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
       e.preventDefault();
-      history.redo();
+      elements.redoButton?.click();
     }
   });
 
@@ -5112,6 +5120,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const topSpanLength = 70; // Increased for better visibility
     const colors = ['#ff6b6b', '#4ade80', '#fbbf24', '#a78bfa', '#f472b6', '#60a5fa'];
     
+    const conductorAngles = []; // Store angles for deviation calculations
+    
     spanData.forEach((span, index) => {
       const color = colors[index % colors.length];
       
@@ -5119,6 +5129,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const dx = span.pole.x - pole.x;
       const dz = span.pole.z - pole.z;
       const horizontalAngle = Math.atan2(-dz, dx); // Negative dz because canvas Y is inverted
+      conductorAngles.push(horizontalAngle);
       
       const endX = topPoleX + topSpanLength * Math.cos(horizontalAngle);
       const endY = topPoleY + topSpanLength * Math.sin(horizontalAngle);
@@ -5145,6 +5156,58 @@ document.addEventListener('DOMContentLoaded', () => {
       
       ctx.fillText(`${span.distance.toFixed(0)}ft`, labelX, labelY);
     });
+    
+    // Draw deviation angles (angle from straight through to next conductor)
+    for (let i = 0; i < conductorAngles.length - 1; i++) {
+      const angle1 = conductorAngles[i];
+      const angle2 = conductorAngles[i + 1];
+      
+      // "Straight through" is the opposite direction of the incoming line
+      let straightThroughAngle = angle1 + Math.PI;
+      
+      // Normalize angles to 0-2π range for easier comparison
+      while (straightThroughAngle < 0) straightThroughAngle += Math.PI * 2;
+      while (straightThroughAngle >= Math.PI * 2) straightThroughAngle -= Math.PI * 2;
+      
+      let normalizedAngle2 = angle2;
+      while (normalizedAngle2 < 0) normalizedAngle2 += Math.PI * 2;
+      while (normalizedAngle2 >= Math.PI * 2) normalizedAngle2 -= Math.PI * 2;
+      
+      // Calculate deviation angle (always positive, shortest path)
+      let devAngle = normalizedAngle2 - straightThroughAngle;
+      if (devAngle > Math.PI) devAngle -= Math.PI * 2;
+      if (devAngle < -Math.PI) devAngle += Math.PI * 2;
+      
+      const absDev = Math.abs(devAngle);
+      const displayDegrees = (absDev * 180 / Math.PI).toFixed(1);
+      
+      // Draw arc from straight-through to the next conductor
+      const arcRadius = 25;
+      
+      ctx.strokeStyle = '#888';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      
+      // Draw shorter arc by going from min to max angle
+      ctx.arc(topPoleX, topPoleY, arcRadius, 
+              straightThroughAngle, 
+              normalizedAngle2, 
+              devAngle < 0); // Counterclockwise if deviation is negative
+      
+      ctx.stroke();
+      
+      // Draw angle label at midpoint of arc
+      const midAngle = straightThroughAngle + devAngle / 2;
+      const labelDist = arcRadius + 12;
+      const labelX = topPoleX + labelDist * Math.cos(midAngle);
+      const labelY = topPoleY + labelDist * Math.sin(midAngle);
+      
+      ctx.fillStyle = '#888';
+      ctx.font = 'bold 9px Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${displayDegrees}°`, labelX, labelY + 3);
+      ctx.textAlign = 'start';
+    }
     
     // Draw divider line
     ctx.strokeStyle = '#444';
