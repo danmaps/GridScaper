@@ -1,4 +1,4 @@
-import { CONSTANTS, HELPERS, BIRD_SETTINGS, EQUIPMENT_COLORS, createMaterials, createGeometries } from './config.js';
+import { CONSTANTS, HELPERS, BIRD_SETTINGS, EQUIPMENT_COLORS, createMaterials, createGeometries, createTransmissionTower, TOWER_TIER_FRACTIONS } from './config.js';
 import { buildTerrain as importedBuildTerrain, terrainOffsetZ, fitGroundInView } from './terrain.js';
 import { initUI, setupUI, UIState, getUIValues, elements } from './ui.js';
 import { getConductorCurve } from '../utils/catenary.js';
@@ -68,7 +68,8 @@ document.addEventListener('DOMContentLoaded', () => {
         x: p.x,
         z: p.z,
         h: p.h,
-        base: p.base
+        base: p.base,
+        isTower: p.isTower || false
       }));
       
       // Create a deep copy of current spans state
@@ -140,14 +141,24 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // Restore poles from state
       state.poles.forEach(poleData => {
-        const mesh = new THREE.Mesh(poleGeo, mPole);
-        mesh.scale.y = poleData.h / BASE_H;
-        mesh.position.set(poleData.x, poleData.base + poleData.h / 2, poleData.z + terrainOffsetZ);
+        let mesh;
+        const isTower = poleData.isTower || false;
+        
+        if (isTower) {
+          mesh = createTransmissionTower(poleData.h, mPole);
+          const tier3Height = poleData.h + 10; // Fixed tier spacing
+          mesh.position.set(poleData.x, poleData.base + tier3Height / 2, poleData.z + terrainOffsetZ);
+        } else {
+          mesh = new THREE.Mesh(poleGeo, mPole);
+          mesh.scale.y = poleData.h / BASE_H;
+          
+          const crossArm = new THREE.Mesh(crossArmGeo, mCrossArm);
+          crossArm.position.y = 5;
+          mesh.add(crossArm);
+          mesh.position.set(poleData.x, poleData.base + poleData.h / 2, poleData.z + terrainOffsetZ);
+        }
         mesh.userData.pole = true;
-
-        const crossArm = new THREE.Mesh(crossArmGeo, mCrossArm);
-        crossArm.position.y = 5;
-        mesh.add(crossArm);
+        mesh.userData.isTower = isTower;
 
         scene.add(mesh);
         poles.push({ 
@@ -155,7 +166,8 @@ document.addEventListener('DOMContentLoaded', () => {
           x: poleData.x, 
           z: poleData.z, 
           h: poleData.h, 
-          base: poleData.base, 
+          base: poleData.base,
+          isTower: isTower, 
           obj: mesh 
         });
         // Update nextPoleId to avoid conflicts
@@ -337,8 +349,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }, duration);
   }
 
-  // Ghost pole mesh placeholder
-  const ghost = new THREE.Mesh(poleGeo, mGhost.clone());
+  // Ghost pole/tower mesh placeholder
+  let ghost = new THREE.Mesh(poleGeo, mGhost.clone());
   ghost.visible = false;
   ghost.userData.ghost = true;
   scene.add(ghost);
@@ -1936,35 +1948,111 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function drawSpan(a, b) {
-    const crossarmPositions = [-1.2, 0, 1.2];
+    // Determine if either pole is a tower
+    const aIsTower = a.isTower || false;
+    const bIsTower = b.isTower || false;
     
-    crossarmPositions.forEach(offset => {
-      // Convert pounds to tension factor for catenary calculation
-      // Map 500-5000 lbs to approximately 0.2-5.0 factor range
-      const tensionFactor = (UIState.currentTension - 500) / (5000 - 500) * (5.0 - 0.2) + 0.2;
+    // Define tower tier positions: fixed spacing with lowest tier at pole height
+    // tier1 = height, tier2 = height + 5, tier3 = height + 10
+    const getTowerTierHeights = (pole) => [pole.h, pole.h + 5, pole.h + 10];
+    
+    // If both are towers, draw conductors at tower tier heights
+    if (aIsTower && bIsTower) {
+      // Draw 2 conductors per tier (left and right)
+      const lateralOffsets = [-1.5, 1.5]; // Wider spacing for tower conductors
+      const tierHeightsA = getTowerTierHeights(a);
+      const tierHeightsB = getTowerTierHeights(b);
       
-      const curvePoints = getConductorCurve({
-        poleA: a,
-        poleB: b,
-        tension: tensionFactor,
-        samples: SAMPLES,
-        lateralOffset: offset,
-        terrainOffsetZ
+      tierHeightsA.forEach((tierHeightA, tierIdx) => {
+        const tierHeightB = tierHeightsB[tierIdx];
+        lateralOffsets.forEach(offset => {
+          const tensionFactor = (UIState.currentTension - 500) / (5000 - 500) * (5.0 - 0.2) + 0.2;
+          
+          const curvePoints = getConductorCurve({
+            poleA: a,
+            poleB: b,
+            tension: tensionFactor,
+            samples: SAMPLES,
+            lateralOffset: offset,
+            terrainOffsetZ,
+            tierHeightA: tierHeightA,
+            tierHeightB: tierHeightB
+          });
+          
+          const pts = curvePoints.map(p => new THREE.Vector3(p.x, p.y, p.z));
+          const geo = new THREE.BufferGeometry().setFromPoints(pts);
+          const line = new THREE.Line(geo, mGood);
+          line.userData = { 
+            span: true, 
+            a: a.obj, 
+            b: b.obj,
+            hasViolation: false
+          };
+          scene.add(line);
+        });
       });
+    } else if (aIsTower || bIsTower) {
+      // Mixed tower/pole connection - conductors from each tower tier connect to pole top
+      const lateralOffsets = [-1.5, 1.5];
+      const tierHeightsA = aIsTower ? getTowerTierHeights(a) : [null, null, null];
+      const tierHeightsB = bIsTower ? getTowerTierHeights(b) : [null, null, null];
       
-      // Convert to THREE.Vector3 for geometry
-      const pts = curvePoints.map(p => new THREE.Vector3(p.x, p.y, p.z));
+      tierHeightsA.forEach((tierHeightA, tierIdx) => {
+        const tierHeightB = tierHeightsB[tierIdx];
+        lateralOffsets.forEach(offset => {
+          const tensionFactor = (UIState.currentTension - 500) / (5000 - 500) * (5.0 - 0.2) + 0.2;
+          
+          const curvePoints = getConductorCurve({
+            poleA: a,
+            poleB: b,
+            tension: tensionFactor,
+            samples: SAMPLES,
+            lateralOffset: offset,
+            terrainOffsetZ,
+            tierHeightA: tierHeightA,
+            tierHeightB: tierHeightB
+          });
+          
+          const pts = curvePoints.map(p => new THREE.Vector3(p.x, p.y, p.z));
+          const geo = new THREE.BufferGeometry().setFromPoints(pts);
+          const line = new THREE.Line(geo, mGood);
+          line.userData = { 
+            span: true, 
+            a: a.obj, 
+            b: b.obj,
+            hasViolation: false
+          };
+          scene.add(line);
+        });
+      });
+    } else {
+      // Standard distribution pole rendering with 3 conductors at crossarm height
+      const crossarmPositions = [-1.2, 0, 1.2];
       
-      const geo = new THREE.BufferGeometry().setFromPoints(pts);
-      const line = new THREE.Line(geo, mGood);
-      line.userData = { 
-        span: true, 
-        a: a.obj, 
-        b: b.obj,
-        hasViolation: false // Will be updated by checkClearances
-      };
-      scene.add(line);
-    });
+      crossarmPositions.forEach(offset => {
+        const tensionFactor = (UIState.currentTension - 500) / (5000 - 500) * (5.0 - 0.2) + 0.2;
+        
+        const curvePoints = getConductorCurve({
+          poleA: a,
+          poleB: b,
+          tension: tensionFactor,
+          samples: SAMPLES,
+          lateralOffset: offset,
+          terrainOffsetZ
+        });
+        
+        const pts = curvePoints.map(p => new THREE.Vector3(p.x, p.y, p.z));
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        const line = new THREE.Line(geo, mGood);
+        line.userData = { 
+          span: true, 
+          a: a.obj, 
+          b: b.obj,
+          hasViolation: false
+        };
+        scene.add(line);
+      });
+    }
   }
 
   function rebuild() {
@@ -2110,17 +2198,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const base = hAt(x, z + terrainOffsetZ);
-    const mesh = new THREE.Mesh(poleGeo, mPole);
-    mesh.scale.y = h / BASE_H;
-    mesh.position.set(x, base + h / 2, z + terrainOffsetZ);
-    mesh.userData.pole = true;
-
-    const crossArm = new THREE.Mesh(crossArmGeo, mCrossArm);
-    crossArm.position.y = 5;  
-    mesh.add(crossArm);
     
+    let mesh;
+    const isTower = UIState.towerMode; // Capture current mode for this pole
+    
+    if (isTower) {
+      // Create transmission tower
+      // h is the lowest tier height; tiers are spaced 5 units apart
+      mesh = createTransmissionTower(h, mPole);
+      const tier3Height = h + 10; // tier3 is at h + 5 + 5
+      mesh.position.set(x, base + tier3Height / 2, z + terrainOffsetZ);
+    } else {
+      // Create standard pole
+      mesh = new THREE.Mesh(poleGeo, mPole);
+      mesh.scale.y = h / BASE_H;
+      mesh.position.set(x, base + h / 2, z + terrainOffsetZ);
+      
+      const crossArm = new THREE.Mesh(crossArmGeo, mCrossArm);
+      crossArm.position.y = 5;  
+      mesh.add(crossArm);
+    }
+    
+    mesh.userData.pole = true;
+    mesh.userData.isTower = isTower;
     scene.add(mesh);
-    poles.push({ id: nextPoleId++, x, z, h, base, obj: mesh });
+    poles.push({ id: nextPoleId++, x, z, h, base, obj: mesh, isTower });
     rebuild();
     updateCrossarmOrientations();
     updateLastPoleIndicator(); // Update the last pole indicator
@@ -2169,6 +2271,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateCrossarmOrientations() {
     poles.forEach((pole, index) => {
+      // Skip towers - they don't use crossarms
+      if (pole.isTower) return;
+      
       // Remove all existing crossarms
       pole.obj.children.filter(child => child.geometry.type === 'BoxGeometry')
         .forEach(child => pole.obj.remove(child));
@@ -2234,23 +2339,48 @@ document.addEventListener('DOMContentLoaded', () => {
         const perp1 = new THREE.Vector3(-spanDir.z, 0, spanDir.x).normalize();
         const perp2 = new THREE.Vector3(spanDir.z, 0, -spanDir.x).normalize();
         
-        [perp1, perp2].forEach(perp => {
-          const angle = -Math.atan2(perp.z, perp.x);
-          const arm = new THREE.Mesh(crossArmGeo, mCrossArm);
-          arm.position.y = 5;
-          arm.rotation.y = angle;
-          pole.obj.add(arm);
+        // For towers, place crossarms at each tier; for poles, use fixed height
+        const getTierHeights = (poleHeight, isTower) => {
+          if (isTower) {
+            // Tier fractions relative to tower's full local height
+            return TOWER_TIER_FRACTIONS.map(frac => (-poleHeight / 2) + frac * poleHeight);
+          }
+          return [5];
+        };
+        
+        const armHeights = getTierHeights(pole.h, pole.isTower);
+        
+        [perp1, perp2].forEach((perp, perpIdx) => {
+          armHeights.forEach(armHeight => {
+            const angle = -Math.atan2(perp.z, perp.x);
+            const arm = new THREE.Mesh(crossArmGeo, mCrossArm);
+            arm.position.y = armHeight;
+            arm.rotation.y = angle;
+            pole.obj.add(arm);
+          });
         });
       } else {
         // Multiple connections - add crossarm for each direction
+        const getTierHeights = (poleHeight, isTower) => {
+          if (isTower) {
+            return TOWER_TIER_FRACTIONS.map(frac => (-poleHeight / 2) + frac * poleHeight);
+          }
+          return [5];
+        };
+        
+        const armHeights = getTierHeights(pole.h, pole.isTower);
+        
         dirs.forEach(dir => {
           const perp = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
           const angle = -Math.atan2(perp.z, perp.x);
-          const arm = new THREE.Mesh(crossArmGeo, mCrossArm);
-          if (acuteCase) arm.scale.x = 1;
-          arm.position.y = 5;
-          arm.rotation.y = angle;
-          pole.obj.add(arm);
+          
+          armHeights.forEach(armHeight => {
+            const arm = new THREE.Mesh(crossArmGeo, mCrossArm);
+            if (acuteCase) arm.scale.x = 1;
+            arm.position.y = armHeight;
+            arm.rotation.y = angle;
+            pole.obj.add(arm);
+          });
         });
       }
     });
@@ -2276,7 +2406,9 @@ document.addEventListener('DOMContentLoaded', () => {
   
 
   function updateGhost() {
+    scene.remove(ghost);
     ghost.visible = false;
+    
     // Remove ghost span label if present
     const existingLabel = document.getElementById('ghostSpanLabel');
     if (existingLabel) existingLabel.style.display = 'none';
@@ -2299,9 +2431,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const h = UIState.currentHeight;
     const base = hAt(hoverPt.x, hoverPt.z + terrainOffsetZ);
 
-    ghost.scale.y = h / BASE_H;
-    ghost.position.set(hoverPt.x, base + h / 2, hoverPt.z + terrainOffsetZ);
+    // Recreate ghost as tower or pole based on current mode
+    if (UIState.towerMode) {
+      ghost = createTransmissionTower(h, mGhost);
+      ghost.userData.ghost = true;
+      const tier3Height = h + 10;
+      ghost.position.set(hoverPt.x, base + tier3Height / 2, hoverPt.z + terrainOffsetZ);
+    } else {
+      ghost = new THREE.Mesh(poleGeo, mGhost.clone());
+      ghost.scale.y = h / BASE_H;
+      ghost.userData.ghost = true;
+      ghost.position.set(hoverPt.x, base + h / 2, hoverPt.z + terrainOffsetZ);
+    }
     ghost.visible = true;
+    scene.add(ghost);
 
     // Show prospective span length only in challenge mode
     if (challengeState.active) {
@@ -3258,21 +3401,30 @@ document.addEventListener('DOMContentLoaded', () => {
     poles.length = 0;
 
     for (const pole of customPoles) {
-      const mesh = new THREE.Mesh(poleGeo, mPole);
+      let mesh;
       const scaledHeight = pole.h;
-      mesh.scale.y = scaledHeight / BASE_H;
+      
+      if (UIState.towerMode) {
+        mesh = createTransmissionTower(scaledHeight, mPole);
+      } else {
+        mesh = new THREE.Mesh(poleGeo, mPole);
+        mesh.scale.y = scaledHeight / BASE_H;
+        
+        const crossArm = new THREE.Mesh(crossArmGeo, mCrossArm);
+        crossArm.position.y = 5;
+        mesh.add(crossArm);
+      }
+      
       const zPos = pole.z;
       const xPos = 0; // Center poles in the strip
       const base = pole.elev;
-      mesh.position.set(xPos, base + scaledHeight / 2, zPos + terrainOffsetZ);
+      const actualHeight = UIState.towerMode ? (pole.h + 10) / 2 : scaledHeight / 2;
+      mesh.position.set(xPos, base + actualHeight / 2, zPos + terrainOffsetZ);
       mesh.userData.pole = true;
-
-      const crossArm = new THREE.Mesh(crossArmGeo, mCrossArm);
-      crossArm.position.y = 5;
-      mesh.add(crossArm);
+      mesh.userData.isTower = UIState.towerMode;
 
       scene.add(mesh);
-      poles.push({ id: nextPoleId++, x: xPos, z: zPos, h: scaledHeight, base, obj: mesh });
+      poles.push({ id: nextPoleId++, x: xPos, z: zPos, h: scaledHeight, base, obj: mesh, isTower: false });
     }
     
     rebuild();
@@ -4410,14 +4562,25 @@ document.addEventListener('DOMContentLoaded', () => {
       showLoadingOverlay('Importing poles...');
       sceneData.poles.forEach(poleData => {
         // Add pole with imported data
-        const mesh = new THREE.Mesh(poleGeo, mPole);
-        mesh.scale.y = poleData.height / BASE_H;
-        mesh.position.set(poleData.x, poleData.elevation + poleData.height / 2, poleData.z + terrainOffsetZ);
+        let mesh;
+        const isTower = poleData.isTower || false;
+        
+        if (isTower) {
+          mesh = createTransmissionTower(poleData.height, mPole);
+          const tier3Height = poleData.height + 10;
+          mesh.position.set(poleData.x, poleData.elevation + tier3Height / 2, poleData.z + terrainOffsetZ);
+        } else {
+          mesh = new THREE.Mesh(poleGeo, mPole);
+          mesh.scale.y = poleData.height / BASE_H;
+          
+          const crossArm = new THREE.Mesh(crossArmGeo, mCrossArm);
+          crossArm.position.y = 5;
+          mesh.add(crossArm);
+          mesh.position.set(poleData.x, poleData.elevation + poleData.height / 2, poleData.z + terrainOffsetZ);
+        }
+        
         mesh.userData.pole = true;
-
-        const crossArm = new THREE.Mesh(crossArmGeo, mCrossArm);
-        crossArm.position.y = 5;
-        mesh.add(crossArm);
+        mesh.userData.isTower = isTower;
 
         scene.add(mesh);
         poles.push({ 
@@ -4426,6 +4589,7 @@ document.addEventListener('DOMContentLoaded', () => {
           z: poleData.z, 
           h: poleData.height, 
           base: poleData.elevation, 
+          isTower: poleData.isTower || false,
           obj: mesh 
         });
         // Update nextPoleId to avoid conflicts
@@ -4651,16 +4815,27 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Add poles with GIS data
         gisData.poles.forEach(poleData => {
-          const mesh = new THREE.Mesh(poleGeo, mPole);
-          mesh.scale.y = poleData.height / BASE_H;
-          mesh.position.set(poleData.x, poleData.elevation + poleData.height / 2, poleData.z + terrainOffsetZ);
+          let mesh;
+          const isTower = poleData.isTower || false;
+          
+          if (isTower) {
+            mesh = createTransmissionTower(poleData.height, mPole);
+            const tier3Height = poleData.height + 10;
+            mesh.position.set(poleData.x, poleData.elevation + tier3Height / 2, poleData.z + terrainOffsetZ);
+          } else {
+            mesh = new THREE.Mesh(poleGeo, mPole);
+            mesh.scale.y = poleData.height / BASE_H;
+            
+            const crossArm = new THREE.Mesh(crossArmGeo, mCrossArm);
+            crossArm.position.y = 5;
+            mesh.add(crossArm);
+            mesh.position.set(poleData.x, poleData.elevation + poleData.height / 2, poleData.z + terrainOffsetZ);
+          }
+          
           mesh.userData.pole = true;
           mesh.userData.gisId = poleData.id;
           mesh.userData.originalCoords = poleData.originalCoords;
-
-          const crossArm = new THREE.Mesh(crossArmGeo, mCrossArm);
-          crossArm.position.y = 5;
-          mesh.add(crossArm);
+          mesh.userData.isTower = isTower;
 
           scene.add(mesh);
           poles.push({ 
@@ -4671,7 +4846,8 @@ document.addEventListener('DOMContentLoaded', () => {
             base: poleData.elevation, 
             obj: mesh,
             gisId: poleData.id, // Keep original GIS ID separate
-            originalCoords: poleData.originalCoords
+            originalCoords: poleData.originalCoords,
+            isTower: poleData.isTower || false
           });
         });
         

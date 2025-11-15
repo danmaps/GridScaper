@@ -22,6 +22,7 @@ export const UIState = {
   conductorToolActive: true,
   eraserToolActive: false,
   inspectToolActive: false,
+  towerMode: false, // Whether to use transmission towers instead of poles
   // Conductor drawing state
   conductorStartPole: null, // First pole selected for conductor drawing
   conductorHoverPole: null  // Pole being hovered over during conductor drawing
@@ -81,7 +82,10 @@ export const elements = {
   get inspectLeftAngle() { return document.getElementById('inspectLeftAngle'); },
   get inspectRightAngle() { return document.getElementById('inspectRightAngle'); },
   get inspectUpstreamDistance() { return document.getElementById('inspectUpstreamDistance'); },
-  get inspectDownstreamDistance() { return document.getElementById('inspectDownstreamDistance'); }
+  get inspectDownstreamDistance() { return document.getElementById('inspectDownstreamDistance'); },
+  get towerModeSlider() { return document.getElementById('towerModeSlider'); },
+  get towerModeToggleButton() { return document.getElementById('towerModeToggleButton'); },
+  get towerModeToggle() { return document.getElementById('towerModeToggle'); }
 };
 
 export function initUI() {
@@ -257,6 +261,36 @@ export function setupUI(callbacks, dependencies) {
         checkClearances();
       }
     };
+  }
+
+  if (elements.towerModeSlider) {
+    elements.towerModeSlider.addEventListener('click', () => {
+      UIState.towerMode = !UIState.towerMode;
+      
+      // Update slider button position
+      const button = elements.towerModeToggleButton;
+      if (button) {
+        button.style.left = UIState.towerMode ? '20px' : '2px';
+      }
+      
+      // Update slider background
+      const slider = elements.towerModeSlider;
+      if (slider) {
+        slider.style.background = UIState.towerMode ? 'rgba(115, 194, 251, 0.5)' : 'rgba(115, 194, 251, 0.2)';
+      }
+      
+      // Update the pole tool icon
+      const poleTool = elements.poleTool;
+      if (poleTool) {
+        const icon = poleTool.querySelector('.tool-icon');
+        if (icon) {
+          icon.textContent = UIState.towerMode ? '🗼' : '🏗️';
+        }
+      }
+      
+      // Don't rebuild - allow mixed pole types in same scene
+      // Just update ghost to show what will be placed next
+    });
   }
   
   if (elements.undoButton) {

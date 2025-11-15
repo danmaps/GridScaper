@@ -109,12 +109,21 @@ export function getConductorCurve(options) {
     tension = 1,
     samples = 32,
     lateralOffset = 0,
-    terrainOffsetZ = 0
+    terrainOffsetZ = 0,
+    tierHeightA = null,
+    tierHeightB = null
   } = options;
 
   // Calculate crossarm heights (attachment points)
-  const crossarmHeightA = poleA.base + poleA.h;
-  const crossarmHeightB = poleB.base + poleB.h;
+  // If tierHeight is provided, use it as the absolute attachment height
+  // Otherwise attach at the top (for standard distribution poles)
+  const crossarmHeightA = tierHeightA !== null 
+    ? poleA.base + tierHeightA
+    : poleA.base + poleA.h;
+  
+  const crossarmHeightB = tierHeightB !== null
+    ? poleB.base + tierHeightB
+    : poleB.base + poleB.h;
 
   // Calculate horizontal distance between poles
   const d = Math.hypot(poleB.x - poleA.x, poleB.z - poleA.z);

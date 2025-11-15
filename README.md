@@ -38,7 +38,7 @@ Gridscaper is a **fun and educational** browser-based tool for learning power li
 ## ⚠️ Data Disclaimer
 
 All rules, rates, and risk overlays are **simulated for demonstration only**.  
-No production or confidential data is used. See RULES.md for details.
+No production or confidential data is used.
 
 ***
 
@@ -103,13 +103,13 @@ Future enhancements could include:
 
 ## 📐 Catenary Math: The Physics Behind the Sag
 
-Power lines don't hang in a parabolic arc—they form a **catenary curve**, the natural shape of a flexible cable suspended under its own weight. Gridscaper uses true catenary mathematics to realistically simulate conductor sag.
+Power lines don't hang in a parabolic arc—they form a **catenary curve**, the natural shape of a flexible cable suspended under its own weight. Gridscaper uses true catenary mathematics to realistically simulate conductor sag. Learn more about catenary curves on [Wikipedia](https://en.wikipedia.org/wiki/Catenary).
 
 ### Catenary vs. Parabola
 
 | Aspect | Catenary | Parabola |
 |--------|----------|----------|
-| **Equation** | `y = a·cosh(x/a)` | `y = x²` |
+| **Equation** | $y = a \cdot \cosh\left(\frac{x}{a}\right)$ | $y = x^2$ |
 | **Physical Cause** | Uniform weight per unit length of cable | Uniform vertical load (e.g., bridge deck) |
 | **Real-World Examples** | Power lines, hanging chains | Suspension bridge cables under deck load |
 | **Sag Behavior** | More gradual near supports, steeper in middle | Symmetric, quadratic curve |
@@ -120,83 +120,35 @@ The app uses **true catenary equations** with the hyperbolic cosine function to 
 
 #### The Catenary Equation
 
-For a cable hanging between two level supports separated by distance *L*, the shape is:
+For a cable hanging between two level supports separated by distance $L$, the shape is:
 
-```text
-y = a·cosh(x/a) + c
-```
+$$
+y = a \cdot \cosh\left(\frac{x}{a}\right) + c
+$$
 
 Where:
 
-* `a` is the **catenary parameter** (ratio of horizontal tension to weight per unit length)
-* `x` is the horizontal distance from the low point
-* `c` is a vertical offset constant
+* $a$ is the **catenary parameter** (ratio of horizontal tension to weight per unit length)
+* $x$ is the horizontal distance from the low point
+* $c$ is a vertical offset constant
 
 #### Solving for the Catenary Parameter
 
-Given a desired sag *S* (maximum vertical drop at midspan), we solve for `a` using:
+Given a desired sag $S$ (maximum vertical drop at midspan), we solve for $a$ using:
 
-```text
-S = a·(cosh(L/(2a)) - 1)
-```
+$$
+S = a \cdot \left(\cosh\left(\frac{L}{2a}\right) - 1\right)
+$$
 
-Gridscaper uses the **Newton-Raphson method** to iteratively solve this transcendental equation:
-
-```javascript
-function solveCatenaryParameter(span, targetSag, maxIterations = 20) {
-  // Initial guess from parabolic approximation: a ≈ L²/(8·sag)
-  let a = (span * span) / (8 * targetSag);
-  
-  const halfSpan = span / 2;
-  
-  for (let i = 0; i < maxIterations; i++) {
-    const x = halfSpan / a;
-    const coshX = Math.cosh(x);
-    const sinhX = Math.sinh(x);
-    
-    // Function: f(a) = a·(cosh(L/(2a)) - 1) - targetSag
-    const f = a * (coshX - 1) - targetSag;
-    
-    // Derivative: f'(a) = cosh(x) - 1 - x·sinh(x)
-    const df = coshX - 1 - x * sinhX;
-    
-    // Newton-Raphson update
-    const aNew = a - f / df;
-    
-    if (Math.abs(aNew - a) < 0.001) return aNew;
-    a = aNew;
-  }
-  
-  return a;
-}
-```
+Gridscaper uses the **Newton-Raphson method** to iteratively solve this transcendental equation.
 
 #### Computing the Curve
 
-Once `a` is determined, points along the conductor are calculated:
+Once $a$ is determined, points along the conductor are calculated:
 
-```javascript
-// For each point along the span (t from 0 to 1)
-const t = i / samples;
-
-// Local horizontal coordinate centered at midspan
-const localX = (t - 0.5) * spanLength;
-
-// True catenary sag at this point
-const catenaryY = a * (Math.cosh(localX / a) - 1);
-
-// Height along straight line from pole A to pole B
-const straightLineHeight = heightA + (heightB - heightA) * t;
-
-// Final height is straight line minus catenary sag
-const y = straightLineHeight - catenaryY;
-```
-
-### Key Parameters
-
-* **Tension Factor**: Higher values (more tension) reduce sag proportionally. Default is 1.0; UI slider maps 500–5000 lbs to a 0.2–5.0 multiplier.
-* **Base Sag**: 5% of span length divided by tension factor, with a minimum of 0.1 units.
-* **Inclined Spans**: For poles at different heights, the catenary is calculated in a tilted coordinate system, maintaining the natural hanging shape.
+$$
+\text{True catenary sag at a point: } y = a \cdot \left(\cosh\left(\frac{x}{a}\right) - 1\right)
+$$
 
 ### Why True Catenary Matters
 

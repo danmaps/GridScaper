@@ -941,10 +941,10 @@ body.dark-mode {
       
       <!-- Pole Configuration Section -->
       <div class="control-section">
-        <div class="section-title">🏗️ Pole Configuration</div>
+        <div class="section-title">🏗️ Structure Configuration</div>
         <div class="control-row">
           <label class="control-group">
-            New pole height:
+            New structure height:
             <div class="slider-with-value">
               <input id="heightSlider" type="range" min="1" max="40" step="1" value="20" />
               <span id="heightLabel">20</span> ft
@@ -956,6 +956,15 @@ body.dark-mode {
               <input id="tensionSlider" type="range" min="500" max="5000" step="100" value="2000" />
               <span id="tensionLabel">2000 lbs</span>
             </div>
+          </label>
+        </div>
+        <div class="control-row" style="margin-top: 8px;">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 11px;">
+            <span>🏗️ Distribution</span>
+            <div style="position: relative; width: 40px; height: 24px; background: rgba(115, 194, 251, 0.2); border: 1px solid rgba(115, 194, 251, 0.4); border-radius: 12px; cursor: pointer; transition: background 0.3s;" id="towerModeSlider">
+              <div style="position: absolute; width: 20px; height: 20px; background: rgba(115, 194, 251, 0.6); border-radius: 50%; top: 2px; left: 2px; transition: left 0.3s; transform: translateZ(0);" id="towerModeToggleButton"></div>
+            </div>
+            <span>🗼 Transmission</span>
           </label>
         </div>
       </div>
